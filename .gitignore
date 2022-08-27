@@ -130,3 +130,6 @@ dmypy.json
 
 # environment variables
 .envs/.production/*
+
+# db reports
+db/reports/*
