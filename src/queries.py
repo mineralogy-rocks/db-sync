@@ -31,37 +31,51 @@ get_minerals = (
 )
 
 insert_mineral_log = (
-    "INSERT INTO mineral_log (name, description, mindat_id, ima_symbol) VALUES %s;"
+    "INSERT INTO mineral_log AS ml (name, description, mindat_id, ima_symbol) VALUES %s "
+    "RETURNING ml.id, ml.name, ml.description, ml.mindat_id, ml.ima_symbol;"
 )
 
 insert_mineral_formula = (
-    "INSERT INTO mineral_formula AS mf (id, formula, note, source_id) "
-    "SELECT ml.id, new.formula, new.note, new.source_id "
-    "FROM (VALUES %s) AS new (name, formula, note, source_id) "
-    "INNER JOIN mineral_log AS ml on ml.name = new.name "
-    "RETURNING mf.id, mf.formula, mf.note, mf.source_id;"
+    "WITH ins (id, mineral_id, formula, note, source_id) AS ( "
+    "       INSERT INTO mineral_formula AS mf (mineral_id, formula, note, source_id) "
+    "       SELECT ml.id, new.formula, new.note, new.source_id "
+    "       FROM (VALUES %s) AS new (name, formula, note, source_id) "
+    "       INNER JOIN mineral_log AS ml on ml.name = new.name "
+    "       RETURNING mf.id, mf.mineral_id, mf.formula, mf.note, mf.source_id, mf.created_at"
+    ") "
+    "SELECT ml.name, ml.id AS mineral_id, ins.id, ins.formula, ins.note, ins.source_id, ins.created_at "
+    "FROM ins "
+    "INNER JOIN mineral_log ml ON ml.id = ins.mineral_id;"
 )
 
 insert_mineral_history = (
-    "INSERT INTO mineral_history AS mh (mineral_id, discovery_year, ima_year, approval_year, publication_year) "
-    "SELECT ml.id, new.discovery_year::smallint, new.ima_year::smallint, new.approval_year::smallint, "
-    "new.publication_year::smallint "
-    "FROM (VALUES %s) AS new (name, discovery_year, ima_year, approval_year, publication_year) "
-    "INNER JOIN mineral_log AS ml ON ml.name = new.name "
-    "RETURNING mh.id, mh.discovery_year, mh.ima_year, mh.approval_year, mh.publication_year;"
+    "WITH ins (id, mineral_id, discovery_year, ima_year, approval_year, publication_year) AS ( "
+    "   INSERT INTO mineral_history AS mh (mineral_id, discovery_year, ima_year, approval_year, publication_year) "
+    "   SELECT ml.id, new.discovery_year::smallint, new.ima_year::smallint, new.approval_year::smallint, "
+    "   new.publication_year::smallint "
+    "   FROM (VALUES %s) AS new (name, discovery_year, ima_year, approval_year, publication_year) "
+    "   INNER JOIN mineral_log AS ml ON ml.name = new.name "
+    "   RETURNING mh.id, mh.mineral_id, mh.discovery_year, mh.ima_year, mh.approval_year, mh.publication_year"
+    ") "
+    "SELECT ml.name, ml.id AS mineral_id, ins.id, ins.discovery_year, ins.ima_year, ins.approval_year, "
+    "       ins.publication_year "
+    "FROM ins "
+    "INNER JOIN mineral_log ml ON ml.id = ins.mineral_id;"
 )
 
 
 update_mineral_log = (
     "UPDATE mineral_log AS ml SET "
     "description = new.description, "
-    "mindat_id = new.mindat_id, "
+    "mindat_id = new.mindat_id::int, "
     "ima_symbol = new.ima_symbol "
     "FROM (VALUES %s) AS new (id, description, mindat_id, ima_symbol) "
-    "WHERE ml.id::uuid = new.id::uuid;"
+    "WHERE ml.id::uuid = new.id::uuid "
+    "RETURNING ml.id, ml.name, ml.description, ml.mindat_id, ml.ima_symbol;"
 )
 
 update_mineral_history = (
+    "WITH upd (id, mineral_id, discovery_year, ima_year, approval_year, publication_year) AS ( "
     "UPDATE mineral_history AS mh SET "
     "discovery_year = new.discovery_year::smallint, "
     "ima_year = new.ima_year::smallint, "
@@ -70,5 +84,10 @@ update_mineral_history = (
     "FROM (VALUES %s) "
     "AS new (id, discovery_year, ima_year, approval_year, publication_year) "
     "WHERE mh.id = new.id "
-    "RETURNING mh.id, mh.discovery_year, mh.ima_year, mh.approval_year, mh.publication_year;"
+    "RETURNING mh.id, mh.mineral_id, mh.discovery_year, mh.ima_year, mh.approval_year, mh.publication_year"
+    ") "
+    "SELECT ml.name, ml.id AS mineral_id, upd.id, upd.discovery_year, upd.ima_year, upd.approval_year, "
+    "       upd.publication_year "
+    "FROM upd "
+    "INNER JOIN mineral_log ml ON ml.id = upd.mineral_id;"
 )

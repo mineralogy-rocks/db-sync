@@ -1,5 +1,6 @@
 # -*- coding: UTF-8 -*-
 import concurrent.futures
+import re
 import sys
 from datetime import datetime
 from time import perf_counter
@@ -15,6 +16,7 @@ from src.queries import (
     get_mineral_history,
     get_mineral_log,
     get_minerals,
+    insert_mineral_formula,
     insert_mineral_history,
     insert_mineral_log,
     update_mineral_history,
@@ -117,8 +119,8 @@ class Migration:
 
     def sync_mineral_log(self):
 
-        assert len(self.mineral_log)
-        assert len(self.minerals)
+        assert self.mineral_log is not None
+        assert self.minerals is not None
 
         columns_ = [
             "name",
@@ -135,12 +137,7 @@ class Migration:
         insert = outer_join[(outer_join._merge == "right_only")].drop("_merge", axis=1)
         insert.drop(insert.filter(regex="_x$").columns, axis=1, inplace=True)
         insert.rename(
-            columns={
-                "mindat_id_y": "mindat_id",
-                "description_y": "description",
-                "ima_symbol_y": "ima_symbol",
-            },
-            inplace=True,
+            columns=lambda column_: re.sub("_[xy]$", "", column_), inplace=True
         )
         insert = insert.drop_duplicates("name")
         insert = insert[columns_]
@@ -174,22 +171,8 @@ class Migration:
             ]
         ]
 
-        old_.rename(
-            columns={
-                "mindat_id_x": "mindat_id",
-                "description_x": "description",
-                "ima_symbol_x": "ima_symbol",
-            },
-            inplace=True,
-        )
-        new_.rename(
-            columns={
-                "mindat_id_y": "mindat_id",
-                "description_y": "description",
-                "ima_symbol_y": "ima_symbol",
-            },
-            inplace=True,
-        )
+        old_.rename(columns=lambda column_: re.sub("_[xy]$", "", column_), inplace=True)
+        new_.rename(columns=lambda column_: re.sub("_[xy]$", "", column_), inplace=True)
 
         diff = old_.compare(new_, keep_shape=False).dropna(how="all", axis=1)
 
@@ -215,8 +198,8 @@ class Migration:
 
     def sync_mineral_formula(self):
 
-        assert len(self.mineral_formula)
-        assert len(self.minerals)
+        assert self.mineral_formula is not None
+        assert self.minerals is not None
 
         columns_ = [
             "name",
@@ -245,13 +228,7 @@ class Migration:
         insert = outer_join[(outer_join._merge == "right_only")].drop("_merge", axis=1)
         insert.drop(insert.filter(regex="_x$").columns, axis=1, inplace=True)
         insert.rename(
-            columns={
-                "mindat_id_y": "mindat_id",
-                "formula_y": "formula",
-                "note_y": "note",
-                "source_id_y": "source_id",
-            },
-            inplace=True,
+            columns=lambda column_: re.sub("_[xy]$", "", column_), inplace=True
         )
         insert = insert.drop_duplicates(
             [
@@ -263,9 +240,9 @@ class Migration:
 
         if len(insert) > 0:
             try:
-                retrieved_ = self.execute_query(insert, insert_mineral_history)
+                retrieved_ = self.execute_query(insert, insert_mineral_formula)
                 self.save_report(
-                    retrieved_, table_name="mineral_history", operation="insert"
+                    retrieved_, table_name="mineral_formula", operation="insert"
                 )
             except Exception:
                 # TODO: save log?
@@ -273,8 +250,8 @@ class Migration:
 
     def sync_mineral_history(self):
 
-        assert len(self.mineral_history)
-        assert len(self.minerals)
+        assert self.mineral_history is not None
+        assert self.minerals is not None
 
         columns_ = [
             "name",
@@ -303,13 +280,7 @@ class Migration:
         insert = outer_join[(outer_join._merge == "right_only")].drop("_merge", axis=1)
         insert.drop(insert.filter(regex="_x$").columns, axis=1, inplace=True)
         insert.rename(
-            columns={
-                "discovery_year_y": "discovery_year",
-                "ima_year_y": "ima_year",
-                "approval_year_y": "approval_year",
-                "publication_year_y": "publication_year",
-            },
-            inplace=True,
+            columns=lambda column_: re.sub("_[xy]$", "", column_), inplace=True
         )
         insert = insert.drop_duplicates("name")
         insert = insert[columns_]
@@ -347,24 +318,8 @@ class Migration:
             ]
         ]
 
-        old_.rename(
-            columns={
-                "discovery_year_x": "discovery_year",
-                "ima_year_x": "ima_year",
-                "approval_year_x": "approval_year",
-                "publication_year_x": "publication_year",
-            },
-            inplace=True,
-        )
-        new_.rename(
-            columns={
-                "discovery_year_y": "discovery_year",
-                "ima_year_y": "ima_year",
-                "approval_year_y": "approval_year",
-                "publication_year_y": "publication_year",
-            },
-            inplace=True,
-        )
+        old_.rename(columns=lambda column_: re.sub("_[xy]$", "", column_), inplace=True)
+        new_.rename(columns=lambda column_: re.sub("_[xy]$", "", column_), inplace=True)
 
         diff = old_.compare(new_, keep_shape=False).dropna(how="all", axis=1)
 
@@ -434,13 +389,11 @@ class Migration:
         data.to_csv(f"db/reports/{filename}", index=False)
 
 
-migrate = Migration()
-migrate.connect_db()
-migrate.get_minerals()
-migrate.fetch_tables()
-
-migrate.sync_mineral_log()
-migrate.sync_mineral_history()
-outer_join = migrate.mineral_log.merge(
-    migrate.minerals, how="outer", on="name", indicator=True
-)
+# migrate = Migration()
+# migrate.connect_db()
+# migrate.get_minerals()
+# migrate.fetch_tables()
+#
+# migrate.sync_mineral_log()
+# migrate.sync_mineral_history()
+# migrate.sync_mineral_formula()
