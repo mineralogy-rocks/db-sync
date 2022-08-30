@@ -222,6 +222,7 @@ class Migration:
             "name",
             "formula",
             "note",
+            "source_id",
         ]
         minerals_ = prepare_minerals_formula(
             self.minerals[["mindat_id", "name", "formula", "imaformula", "note"]]
@@ -245,14 +246,19 @@ class Migration:
         insert.drop(insert.filter(regex="_x$").columns, axis=1, inplace=True)
         insert.rename(
             columns={
-                "discovery_year_y": "discovery_year",
-                "ima_year_y": "ima_year",
-                "approval_year_y": "approval_year",
-                "publication_year_y": "publication_year",
+                "mindat_id_y": "mindat_id",
+                "formula_y": "formula",
+                "note_y": "note",
+                "source_id_y": "source_id",
             },
             inplace=True,
         )
-        insert = insert.drop_duplicates("name")
+        insert = insert.drop_duplicates(
+            [
+                "name",
+                "source_id",
+            ]
+        )
         insert = insert[columns_]
 
         if len(insert) > 0:

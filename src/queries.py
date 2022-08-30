@@ -34,6 +34,14 @@ insert_mineral_log = (
     "INSERT INTO mineral_log (name, description, mindat_id, ima_symbol) VALUES %s;"
 )
 
+insert_mineral_formula = (
+    "INSERT INTO mineral_formula AS mf (id, formula, note, source_id) "
+    "SELECT ml.id, new.formula, new.note, new.source_id "
+    "FROM (VALUES %s) AS new (name, formula, note, source_id) "
+    "INNER JOIN mineral_log AS ml on ml.name = new.name "
+    "RETURNING mf.id, mf.formula, mf.note, mf.source_id;"
+)
+
 insert_mineral_history = (
     "INSERT INTO mineral_history AS mh (mineral_id, discovery_year, ima_year, approval_year, publication_year) "
     "SELECT ml.id, new.discovery_year::smallint, new.ima_year::smallint, new.approval_year::smallint, "
