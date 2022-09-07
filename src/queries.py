@@ -17,6 +17,13 @@ get_mineral_formula = (
     "WHERE mf.source_id > 1;"
 )
 
+get_mineral_relation_suggestion = (
+    "SELECT mrs.id, ml.mindat_id as mineral_id, ml_.mindat_id as relation_id, mrs.relation_type_id "
+    "FROM mineral_relation_suggestion mrs "
+    "INNER JOIN mineral_log ml on ml.id = mrs.mineral_id "
+    "INNER JOIN mineral_log ml_ on ml_.id = mrs.relation_id;"
+)
+
 get_minerals = (
     "SELECT ml.id AS mindat_id, ml.name AS name, ml.formula, ml.imaformula as imaformula, ml.formulanotes AS note, "
     "ml.imayear AS ima_year, "
@@ -30,9 +37,23 @@ get_minerals = (
     ");"
 )
 
+get_relations = (
+    "SELECT r.rid as id, r.min1 AS mineral_id, r.min2 AS relation_id, r.rel as relation_type_id "
+    "FROM relations r;"
+)
+
 insert_mineral_log = (
     "INSERT INTO mineral_log AS ml (name, description, mindat_id, ima_symbol) VALUES %s "
     "RETURNING ml.id, ml.name, ml.description, ml.mindat_id, ml.ima_symbol;"
+)
+
+insert_mineral_relation_suggestion = (
+    "INSERT INTO mineral_relation_suggestion as mrs (id, mineral_id, relation_id, relation_type_id) "
+    "SELECT new.id::int, ml.id, ml_.id, new.relation_type_id::int "
+    "FROM (VALUES %s) AS new (id, mineral_id, relation_id, relation_type_id) "
+    "INNER JOIN mineral_log ml ON ml.mindat_id = new.mineral_id "
+    "INNER JOIN mineral_log ml_ ON ml_.mindat_id = new.relation_id "
+    "RETURNING mrs.id, mrs.mineral_id, mrs.relation_id, mrs.relation_type_id;"
 )
 
 insert_mineral_formula = (
@@ -90,4 +111,23 @@ update_mineral_history = (
     "       upd.publication_year "
     "FROM upd "
     "INNER JOIN mineral_log ml ON ml.id = upd.mineral_id;"
+)
+
+update_mineral_relation_suggestion = (
+    "UPDATE mineral_relation_suggestion AS mrs SET "
+    "mineral_id = ml.id, "
+    "relation_id = ml_.id, "
+    "relation_type_id = new.relation_type_id, "
+    "is_processed = FALSE "
+    "FROM (VALUES %s) AS new (id, mineral_id, relation_id, relation_type_id) "
+    "INNER JOIN mineral_log ml ON ml.mindat_id = new.mineral_id "
+    "INNER JOIN mineral_log ml_ ON ml_.mindat_id = new.relation_id "
+    "WHERE mrs.id = new.id "
+    "RETURNING mrs.id, mrs.mineral_id, mrs.relation_id, mrs.relation_type_id;"
+)
+
+delete_mineral_relation_suggestion = (
+    "DELETE FROM mineral_relation_suggestion AS mrs WHERE mrs.id IN "
+    "(SELECT old.id FROM (VALUES %s) AS old (id, mineral_id)) "
+    "RETURNING mrs.id, mrs.mineral_id, mrs.relation_id, mrs.relation_type_id;"
 )
