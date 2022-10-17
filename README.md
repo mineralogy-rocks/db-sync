@@ -4,7 +4,7 @@ Sync mineralogy.rocks db with mindat
 ## Built With
 
 * [Python](https://docs.python.org/3/) - Programming language
-* [Psycopg2]([https://docs.djangoproject.com/](https://www.psycopg.org/docs/)) - PostgreSQL Adapter
+* [Psycopg2](https://www.psycopg.org/docs/) - PostgreSQL Adapter
 
 ## Support
 
