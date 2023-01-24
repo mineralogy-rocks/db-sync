@@ -14,6 +14,8 @@ def prepare_minerals(minerals):
     minerals_.formula = minerals_.formula.replace(r"", np.nan)
     minerals_.imaformula = minerals_.imaformula.replace(r"", np.nan)
     minerals_.note = minerals_.note.replace(r"", np.nan)
+    minerals_.crystal_system = minerals_.crystal_system.str.lower()
+    minerals_.crystal_system = minerals_.crystal_system.replace(r"", np.nan)
 
     return minerals_
 

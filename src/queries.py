@@ -17,6 +17,13 @@ get_mineral_formula = (
     "WHERE mf.source_id > 1;"
 )
 
+get_mineral_crystallography = (
+    "SELECT ml.name, ml.mindat_id, csl.name as crystal_system "
+    "FROM mineral_crystallography mc "
+    "INNER JOIN mineral_log ml ON mc.mineral_id = ml.id "
+    "INNER JOIN crystal_system_list csl ON mc.crystal_system_id = csl.id;"
+)
+
 get_mineral_relation_suggestion = (
     "SELECT mrs.id, ml.mindat_id as mineral_id, ml_.mindat_id as relation_id, mrs.relation_type_id "
     "FROM mineral_relation_suggestion mrs "
@@ -28,7 +35,7 @@ get_minerals = (
     "SELECT ml.id AS mindat_id, ml.name AS name, ml.formula, ml.imaformula as imaformula, ml.formulanotes AS note, "
     "ml.imayear AS ima_year, "
     "ml.yeardiscovery AS discovery_year, ml.approval_year AS approval_year, ml.publication_year AS publication_year, "
-    "ml.description, ml.shortcode_ima AS ima_symbol "
+    "ml.description, ml.shortcode_ima AS ima_symbol, ml.csystem as crystal_system "
     "FROM minerals ml "
     "WHERE ml.id IN ( "
     "    SELECT ml.id "
@@ -54,6 +61,20 @@ insert_mineral_relation_suggestion = (
     "INNER JOIN mineral_log ml ON ml.mindat_id = new.mineral_id "
     "INNER JOIN mineral_log ml_ ON ml_.mindat_id = new.relation_id "
     "RETURNING mrs.id, mrs.mineral_id, mrs.relation_id, mrs.relation_type_id;"
+)
+
+insert_mineral_crystallography = (
+    "WITH ins (id, mineral_id, crystal_system_id) AS ( "
+    "       INSERT INTO mineral_crystallography AS mc (mineral_id, crystal_system_id) "
+    "       SELECT ml.id, csl.id "
+    "       FROM (VALUES %s) AS new (name, crystal_system) "
+    "       INNER JOIN mineral_log AS ml on ml.name = new.name "
+    "       INNER JOIN crystal_system_list AS csl on csl.name = new.crystal_system "
+    "       RETURNING mc.id, mc.mineral_id, mc.crystal_system_id"
+    ") "
+    "SELECT ml.name, ml.id AS mineral_id, ins.id, ins.crystal_system_id "
+    "FROM ins "
+    "INNER JOIN mineral_log ml ON ml.id = ins.mineral_id;"
 )
 
 insert_mineral_formula = (
@@ -111,6 +132,22 @@ update_mineral_history = (
     "       upd.publication_year "
     "FROM upd "
     "INNER JOIN mineral_log ml ON ml.id = upd.mineral_id;"
+)
+
+update_mineral_crystallography = (
+    "WITH upd (id, mineral_id, crystal_system_id) AS ("
+    "UPDATE mineral_crystallography AS mc SET "
+    "crystal_system_id = csl.id "
+    "FROM (VALUES %s) AS new (mineral_name, crystal_system_name) "
+    "INNER JOIN mineral_log ml ON ml.name = new.mineral_name "
+    "INNER JOIN crystal_system_list csl ON csl.name = new.crystal_system_name "
+    "WHERE mc.mineral_id = ml.id "
+    "RETURNING mc.id, mc.mineral_id, mc.crystal_system_id"
+    ")"
+    "SELECT ml.name, ml.id AS mineral_id, upd.id, csl.name as crystal_system_name "
+    "FROM upd "
+    "INNER JOIN mineral_log ml ON ml.id = upd.mineral_id "
+    "INNER JOIN crystal_system_list csl ON upd.crystal_system_id = csl.id;"
 )
 
 update_mineral_relation_suggestion = (

@@ -16,17 +16,20 @@ from psycopg2.pool import ThreadedConnectionPool
 
 from src.queries import (
     delete_mineral_relation_suggestion,
+    get_mineral_crystallography,
     get_mineral_formula,
     get_mineral_history,
     get_mineral_log,
     get_mineral_relation_suggestion,
     get_minerals,
     get_relations,
+    insert_mineral_crystallography,
     insert_mineral_formula,
     insert_mineral_history,
     insert_mineral_log,
     insert_mineral_relation_suggestion,
     update_mineral_history,
+    update_mineral_crystallography,
     update_mineral_log,
     update_mineral_relation_suggestion,
 )
@@ -82,6 +85,7 @@ class Migration:
             {"table_name": "mineral_log", "query": get_mineral_log},
             {"table_name": "mineral_history", "query": get_mineral_history},
             {"table_name": "mineral_formula", "query": get_mineral_formula},
+            {"table_name": "mineral_crystallography", "query": get_mineral_crystallography},
             {
                 "table_name": "mineral_relation_suggestion",
                 "query": get_mineral_relation_suggestion,
@@ -234,6 +238,98 @@ class Migration:
             except Exception:
                 # TODO: save log?
                 pass
+
+    def sync_mineral_crystallography(self):
+
+        assert self.mineral_crystallography is not None
+        assert self.minerals is not None
+
+        columns_ = [
+            "name",
+            "crystal_system",
+        ]
+        minerals_ = self.minerals[['mindat_id', 'name', 'crystal_system']].dropna(
+            how="all",
+            subset=[
+                "crystal_system",
+            ],
+        )
+
+        outer_join = self.mineral_crystallography.merge(
+            minerals_, how="outer", on="name", indicator=True
+        )
+
+        # Insert
+        insert = outer_join[(outer_join._merge == "right_only")].drop("_merge", axis=1)
+        insert.drop(insert.filter(regex="_x$").columns, axis=1, inplace=True)
+        insert.rename(
+            columns=lambda column_: re.sub("_[xy]$", "", column_), inplace=True
+        )
+        insert = insert.drop_duplicates(
+            [
+                "name",
+                "crystal_system",
+            ]
+        )
+        insert = insert[columns_]
+
+        if len(insert) > 0:
+            try:
+                retrieved_ = self.execute_query(insert, insert_mineral_crystallography)
+                self.save_report(
+                    retrieved_, table_name="mineral_crystallography", operation="insert"
+                )
+            except Exception:
+                # TODO: save log?
+                pass
+
+        # Update
+        update = outer_join[(outer_join._merge == "both")].drop("_merge", axis=1)
+        old_ = update[
+            [
+                "name",
+                "crystal_system_x",
+            ]
+        ]
+        new_ = update[
+            [
+                "name",
+                "crystal_system_y",
+            ]
+        ]
+        old_.rename(columns=lambda column_: re.sub("_[xy]$", "", column_), inplace=True)
+        new_.rename(columns=lambda column_: re.sub("_[xy]$", "", column_), inplace=True)
+
+        diff = old_.compare(new_, keep_shape=False).dropna(how="all", axis=1)
+
+        if len(diff) > 0:
+            update_ = update.loc[diff.index]
+            update_.rename(
+                columns={
+                    "crystal_system_y": "crystal_system",
+                },
+                inplace=True,
+            )
+            update_ = update_[
+                [
+                    "name",
+                    "crystal_system",
+                ]
+            ]
+            try:
+                retrieved_ = self.execute_query(
+                    update_, update_mineral_crystallography
+                )
+                self.save_report(
+                    retrieved_,
+                    table_name="mineral_crystallography",
+                    operation="update",
+                )
+            except Exception:
+                # TODO: save log?
+                pass
+
+
 
     def sync_mineral_formula(self):
 
