@@ -129,7 +129,9 @@ dmypy.json
 .pyre/
 
 # environment variables
-.envs/.production/*
+.envs/.prod/*
+!.envs/.prod/.gitkeep
 
 # db reports
 db/reports/*
+!db/reports/.gitkeep

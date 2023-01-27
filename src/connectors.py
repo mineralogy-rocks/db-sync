@@ -37,11 +37,17 @@ from src.utils import prepare_minerals, prepare_minerals_formula
 
 register_adapter(np.int64, AsIs)
 load_dotenv(".envs/.local/.mindat")
-load_dotenv(".envs/.local/.mr")
 
 
 class Migration:
-    def __init__(self):
+    def __init__(self, env="dev"):
+        if env == "dev":
+            load_dotenv(".envs/.local/.mr")
+        elif env == "prod":
+            load_dotenv(".envs/.prod/.mr")
+        else:
+            sys.exit("Wrong environment!")
+
         self.mindat_connection_params = (
             f"mysql+pymysql://"
             f"{os.getenv('MYSQL_USER')}:{os.getenv('MYSQL_PASSWORD')}@127.0.0.1/"
