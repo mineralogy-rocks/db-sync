@@ -14,6 +14,8 @@ def main():
         migrate.fetch_tables()
 
         migrate.sync_mineral_log()
+        migrate.sync_mineral_status()
+        migrate.sync_mineral_relation()
         migrate.sync_mineral_history()
         migrate.sync_mineral_crystallography()
         migrate.sync_mineral_formula()

@@ -20,20 +20,24 @@ from src.queries import (
     get_mineral_formula,
     get_mineral_history,
     get_mineral_log,
+    get_mineral_relation,
     get_mineral_relation_suggestion,
+    get_mineral_status,
     get_minerals,
     get_relations,
     insert_mineral_crystallography,
     insert_mineral_formula,
+    insert_mineral_status,
     insert_mineral_history,
     insert_mineral_log,
+    insert_mineral_relation,
     insert_mineral_relation_suggestion,
     update_mineral_history,
     update_mineral_crystallography,
     update_mineral_log,
     update_mineral_relation_suggestion,
 )
-from src.utils import prepare_minerals, prepare_minerals_formula
+from src.utils import prepare_minerals, prepare_minerals_formula, prepare_minerals_relation_status
 
 register_adapter(np.int64, AsIs)
 load_dotenv(".envs/.local/.mindat")
@@ -65,6 +69,8 @@ class Migration:
         self.mineral_log = None
         self.mineral_history = None
         self.mineral_formula = None
+        self.mineral_status = None
+        self.mineral_relation = None
         self.mineral_relation_suggestion = None
 
         self.minerals = None
@@ -96,6 +102,8 @@ class Migration:
                 "table_name": "mineral_relation_suggestion",
                 "query": get_mineral_relation_suggestion,
             },
+            {"table_name": "mineral_status", "query": get_mineral_status},
+            {"table_name": "mineral_relation", "query": get_mineral_relation},
         ]
 
         with concurrent.futures.ThreadPoolExecutor() as executor:
@@ -389,6 +397,100 @@ class Migration:
                 # TODO: save log?
                 pass
 
+    def sync_mineral_status(self):
+
+        assert self.mineral_status is not None
+        assert self.minerals is not None
+
+        _columns = [
+            "name",
+            "status_id",
+            "direct_relation",
+        ]
+        _minerals = prepare_minerals_relation_status(
+            self.minerals[["name", "variety_of", "synonym_of", "polytype_of"]]
+        )
+
+        outer_join = self.mineral_status.merge(
+            _minerals[['name', 'status_id', 'direct_status']],
+            how="outer",
+            on=["name", "status_id", "direct_status"],
+            indicator=True,
+        )
+
+        # Insert
+        insert = outer_join[(outer_join._merge == "right_only")].drop("_merge", axis=1)
+        insert.drop(insert.filter(regex="_x$").columns, axis=1, inplace=True)
+        insert.rename(
+            columns=lambda column_: re.sub("_[xy]$", "", column_), inplace=True
+        )
+        insert = insert.drop_duplicates(
+            [
+                "name",
+                "status_id",
+                "direct_status",
+            ]
+        )
+        insert = insert[['name', 'status_id', 'direct_status']]
+
+        if len(insert) > 0:
+            try:
+                retrieved_ = self.execute_query(insert, insert_mineral_status)
+                self.save_report(
+                    retrieved_, table_name="mineral_status", operation="insert"
+                )
+            except Exception:
+                # TODO: save log?
+                pass
+
+    def sync_mineral_relation(self):
+
+        assert self.mineral_relation is not None
+        assert self.minerals is not None
+
+        _columns = [
+            "name",
+            "status_id",
+            "relation",
+            "direct_relation",
+        ]
+        _minerals = prepare_minerals_relation_status(
+            self.minerals[["name", "variety_of", "synonym_of", "polytype_of"]]
+        )
+
+        outer_join = self.mineral_relation.merge(
+            _minerals,
+            how="outer",
+            on=["name", "status_id", "relation"],
+            indicator=True,
+        )
+
+        # Insert
+        insert = outer_join[(outer_join._merge == "right_only")].drop("_merge", axis=1)
+        insert.drop(insert.filter(regex="_x$").columns, axis=1, inplace=True)
+        insert.rename(
+            columns=lambda column_: re.sub("_[xy]$", "", column_), inplace=True
+        )
+        insert = insert.drop_duplicates(
+            [
+                "name",
+                "status_id",
+                "relation",
+                "direct_status",
+            ]
+        )
+        insert = insert[['name', 'status_id', "relation", 'direct_status']]
+
+        if len(insert) > 0:
+            try:
+                retrieved_ = self.execute_query(insert, insert_mineral_relation)
+                self.save_report(
+                    retrieved_, table_name="mineral_relation", operation="insert"
+                )
+            except Exception:
+                # TODO: save log?
+                pass
+
     def sync_mineral_relation_suggestion(self):
 
         assert self.mineral_relation_suggestion is not None
@@ -617,25 +719,25 @@ class Migration:
         df = df.replace({np.nan: None})
         tuples = [tuple(x) for x in df.to_numpy()]
 
-        conn = self.pool.getconn()
-        cursor = conn.cursor()
+        _conn = self.pool.getconn()
+        _cursor = _conn.cursor()
         # cursor.mogrify(query % tuples[:10])
 
         try:
-            retrieved = execute_values(cursor, query, tuples, fetch=True)
+            retrieved = execute_values(_cursor, query, tuples, fetch=True)
         except psycopgError as e:
             print("An error occurred: %s" % e)
-            conn.rollback()
+            _conn.rollback()
             return 1
 
         else:
-            conn.commit()
+            _conn.commit()
             print("The db was updated with %s records" % len(tuples))
             return retrieved
 
         finally:
-            cursor.close()
-            self.pool.putconn(conn)
+            _cursor.close()
+            self.pool.putconn(_conn)
 
     @staticmethod
     def save_report(data: pd.DataFrame, table_name: str, operation: str) -> None:

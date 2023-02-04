@@ -17,6 +17,27 @@ get_mineral_formula = (
     "WHERE mf.source_id > 1;"
 )
 
+get_mineral_status = (
+    """
+    SELECT ml.name, sl.status_id, ms.direct_status
+    FROM mineral_status ms
+    INNER JOIN mineral_log ml ON ms.mineral_id = ml.id
+    INNER JOIN status_list sl ON sl.id = ms.status_id
+    WHERE sl.status_group_id IN (2, 3, 4);
+    """
+)
+
+get_mineral_relation = (
+    """
+    SELECT ml.name, sl.status_id, ml_.name as relation, ms.direct_status
+    FROM mineral_relation mr
+    INNER JOIN mineral_log ml ON mr.mineral_id = ml.id
+    INNER JOIN mineral_log ml_ ON mr.relation_id = ml_.id
+    INNER JOIN mineral_status ms ON mr.mineral_status_id = ms.id
+    INNER JOIN status_list sl ON ms.status_id = sl.id;
+    """
+)
+
 get_mineral_crystallography = (
     "SELECT ml.name, ml.mindat_id, csl.name as crystal_system "
     "FROM mineral_crystallography mc "
@@ -35,8 +56,12 @@ get_minerals = (
     "SELECT ml.id AS mindat_id, ml.name AS name, ml.formula, ml.imaformula as imaformula, ml.formulanotes AS note, "
     "ml.imayear AS ima_year, "
     "ml.yeardiscovery AS discovery_year, ml.approval_year AS approval_year, ml.publication_year AS publication_year, "
-    "ml.description, ml.shortcode_ima AS ima_symbol, ml.csystem as crystal_system "
+    "ml.description, ml.shortcode_ima AS ima_symbol, ml.csystem as crystal_system, ml2.name as variety_of, "
+    "ml1.name as synonym_of, ml3.name AS polytype_of "
     "FROM minerals ml "
+    "LEFT JOIN minerals ml1 ON ml.synid = ml1.id "
+    "LEFT JOIN minerals ml2 ON ml.varietyof = ml2.id "
+    "LEFT JOIN minerals ml3 ON ml.polytypeof = ml3.id "
     "WHERE ml.id IN ( "
     "    SELECT ml.id "
     "    FROM minerals ml "
@@ -88,6 +113,42 @@ insert_mineral_formula = (
     "SELECT ml.name, ml.id AS mineral_id, ins.id, ins.formula, ins.note, ins.source_id, ins.created_at "
     "FROM ins "
     "INNER JOIN mineral_log ml ON ml.id = ins.mineral_id;"
+)
+
+insert_mineral_status = (
+    """
+    WITH ins (id, mineral_id, status_id) AS (
+        INSERT INTO mineral_status AS ms (mineral_id, status_id, needs_revision, direct_status)
+        SELECT ml.id, sl.id, TRUE AS needs_revision, new.direct_status
+        FROM (VALUES %s) AS new (name, status_id, direct_status)
+        INNER JOIN mineral_log AS ml ON ml.name = new.name
+        INNER JOIN status_list AS sl ON sl.status_id = new.status_id
+        RETURNING ms.id, ms.mineral_id, ms.status_id, ms.needs_revision, ms.direct_status
+    )
+    SELECT ml.name, ml.id AS mineral_id, ins.id, ins.status_id, ins.needs_revision, ins.direct_status
+    FROM ins
+    INNER JOIN mineral_log ml ON ml.id = ins.mineral_id;
+    """
+)
+
+insert_mineral_relation = (
+    """
+    WITH ins (id, mineral_id, mineral_status_id, relation_id) AS (
+        INSERT INTO mineral_relation AS mr (mineral_id, mineral_status_id, relation_id)
+        SELECT ml.id, ms.id, ml_.id
+        FROM (VALUES %s) AS new (name, status_id, relation, direct_status)
+        INNER JOIN mineral_log AS ml ON ml.name = new.name
+        INNER JOIN mineral_log AS ml_ ON ml_.name = new.relation
+        INNER JOIN status_list AS sl ON sl.status_id = new.status_id
+        INNER JOIN mineral_status AS ms ON ms.mineral_id = ml.id AND ms.status_id = sl.id AND
+            ms.direct_status = new.direct_status
+        RETURNING mr.id, mr.mineral_id, mr.mineral_status_id, mr.relation_id
+    )
+    SELECT ins.id, ml.name, ins.mineral_status_id, ml_.name
+    FROM ins
+    INNER JOIN mineral_log ml ON ml.id = ins.mineral_id
+    INNER JOIN mineral_log ml_ ON ml_.id = ins.relation_id;
+    """
 )
 
 insert_mineral_history = (
