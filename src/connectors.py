@@ -16,6 +16,7 @@ from psycopg2.pool import ThreadedConnectionPool
 
 from src.queries import (
     delete_mineral_relation_suggestion,
+    get_alternative_names,
     get_mineral_crystallography,
     get_mineral_formula,
     get_mineral_history,
@@ -25,6 +26,7 @@ from src.queries import (
     get_mineral_status,
     get_minerals,
     get_relations,
+    get_cod,
     insert_mineral_crystallography,
     insert_mineral_formula,
     insert_mineral_status,
@@ -32,15 +34,22 @@ from src.queries import (
     insert_mineral_log,
     insert_mineral_relation,
     insert_mineral_relation_suggestion,
+    insert_mineral_structure,
     update_mineral_history,
     update_mineral_crystallography,
     update_mineral_log,
     update_mineral_relation_suggestion,
 )
-from src.utils import prepare_minerals, prepare_minerals_formula, prepare_minerals_relation_status
+from src.utils import (
+    prepare_minerals,
+    prepare_minerals_formula,
+    prepare_minerals_relation_status,
+    prepare_mineral_structure,
+)
 
 register_adapter(np.int64, AsIs)
 load_dotenv(".envs/.local/.mindat")
+load_dotenv(".envs/.prod/.cod")
 
 
 class Migration:
@@ -54,8 +63,13 @@ class Migration:
 
         self.mindat_connection_params = (
             f"mysql+pymysql://"
-            f"{os.getenv('MYSQL_USER')}:{os.getenv('MYSQL_PASSWORD')}@127.0.0.1/"
-            f"{os.getenv('MYSQL_DATABASE')}"
+            f"{os.getenv('MINDAT_MYSQL_USER')}:{os.getenv('MINDAT_MYSQL_PASSWORD')}@127.0.0.1/"
+            f"{os.getenv('MINDAT_MYSQL_DATABASE')}"
+        )
+        self.cod_connection_params = (
+            f"mysql+pymysql://"
+            f"{os.getenv('COD_MYSQL_USER')}@{os.getenv('COD_MYSQL_HOST')}/"
+            f"{os.getenv('COD_MYSQL_DATABASE')}"
         )
         self.mr_connection_params = {
             "dbname": os.getenv("POSTGRES_DB"),
@@ -74,6 +88,9 @@ class Migration:
         self.mineral_relation_suggestion = None
 
         self.minerals = None
+        self.relations = None
+
+        self.cod = None
 
     def connect_db(self):
 
@@ -141,7 +158,7 @@ class Migration:
     def get_minerals(self):
 
         try:
-            minerals_ = (
+            _minerals = (
                 pd.read_sql_query(
                     get_minerals,
                     self.mindat_connection_params,
@@ -151,7 +168,7 @@ class Migration:
                 .reset_index(drop=True)
             )
 
-            self.minerals = prepare_minerals(minerals_)
+            self.minerals = prepare_minerals(_minerals)
 
         except Exception as e:
             print(f"An error occurred when creating minerals: {e}")
@@ -173,6 +190,42 @@ class Migration:
 
         except Exception as e:
             print(f"An error occurred when creating relations: {e}")
+
+    def get_cod(self):
+        try:
+            _data = (
+                pd.read_sql_query(
+                    get_cod,
+                    self.cod_connection_params,
+                )
+                .fillna(value=np.nan)
+                .sort_values("id")
+                .reset_index(drop=True)
+            )
+
+            self.cod = _data
+
+        except Exception as e:
+            print(f"An error occurred when creating cod data: {e}")
+
+    def get_alternative_names(self):
+        try:
+            conn = self.pool.getconn()
+            retrieved_ = (
+                pd.read_sql_query(
+                    get_alternative_names,
+                    conn,
+                )
+                .fillna(value=np.nan)
+                .reset_index(drop=True)
+            )
+            return retrieved_
+
+        except Exception as e:
+            print("An error occurred when retrieving %s: %s" % ("alternative names", e))
+
+        finally:
+            self.pool.putconn(conn)
 
     def sync_mineral_log(self):
 
@@ -386,6 +439,8 @@ class Migration:
             ]
         )
         insert = insert[columns_]
+        insert['type_id'] = 1
+        insert['reference'] = insert.apply(lambda row: [], axis=1)
 
         if len(insert) > 0:
             try:
@@ -714,6 +769,23 @@ class Migration:
                 # TODO: save log?
                 pass
 
+
+    def sync_rruff_cod(self):
+        _cod = self.cod
+        _alternative_names = self.get_alternative_names()
+        # alternative_names = migrate.get_alternative_names()
+        insert = prepare_mineral_structure(_cod, _alternative_names)
+
+        try:
+            retrieved_ = self.execute_query(insert, insert_mineral_structure)
+            self.save_report(
+                retrieved_, table_name="mineral_structure", operation="insert"
+            )
+        except Exception:
+            # TODO: save log?
+            pass
+
+
     def execute_query(self, df, query):
 
         df = df.replace({np.nan: None})
@@ -721,7 +793,7 @@ class Migration:
 
         _conn = self.pool.getconn()
         _cursor = _conn.cursor()
-        # cursor.mogrify(query % tuples[:10])
+        # _cursor.mogrify(query % tuples[:10])
 
         try:
             retrieved = execute_values(_cursor, query, tuples, fetch=True)

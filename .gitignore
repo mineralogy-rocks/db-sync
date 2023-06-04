@@ -135,3 +135,7 @@ dmypy.json
 # db reports
 db/reports/*
 !db/reports/.gitkeep
+
+# disable all in .idea folder
+.idea/**/*
+

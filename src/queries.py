@@ -53,7 +53,7 @@ get_mineral_relation_suggestion = (
 )
 
 get_minerals = (
-    "SELECT ml.id AS mindat_id, ml.name AS name, ml.formula, ml.imaformula as imaformula, ml.formulanotes AS note, "
+    "SELECT ml.id AS mindat_id, ml.name AS name, ml.dispformulasimple AS formula, ml.imaformula as imaformula, ml.formulanotes AS note, "
     "ml.imayear AS ima_year, "
     "ml.yeardiscovery AS discovery_year, ml.approval_year AS approval_year, ml.publication_year AS publication_year, "
     "ml.description, ml.shortcode_ima AS ima_symbol, ml.csystem as crystal_system, ml2.name as variety_of, "
@@ -72,6 +72,100 @@ get_minerals = (
 get_relations = (
     "SELECT r.rid as id, r.min1 AS mineral_id, r.min2 AS relation_id, r.rel as relation_type_id "
     "FROM relations r;"
+)
+
+get_alternative_names = (
+    """
+        SELECT _temp.mineral_id, _temp.name, _temp.relation_id, _temp.relation_name,
+        CASE WHEN EXISTS (
+                SELECT 1
+                FROM mineral_status ms
+                INNER JOIN status_list sl ON ms.status_id = sl.id AND ms.direct_status AND sl.status_group_id IN (3, 4, 6, 11)
+                WHERE ms.mineral_id = _temp.mineral_id
+            ) THEN 1
+            ELSE _temp.priority
+            END AS priority
+        FROM (
+            WITH RECURSIVE cte(mineral_id, relation_id) AS (
+                SELECT
+                    mr.mineral_id,
+                    mr.relation_id
+                FROM mineral_relation mr
+                INNER JOIN mineral_status ms ON mr.mineral_status_id = ms.id AND NOT ms.direct_status
+                INNER JOIN status_list sl ON ms.status_id = sl.id
+                WHERE sl.status_group_id IN (2, 4, 5)
+                UNION
+                SELECT
+                    cte.mineral_id,
+                    mr.relation_id
+                FROM mineral_relation mr
+                INNER JOIN cte ON mr.mineral_id = cte.relation_id
+                INNER JOIN mineral_status ms ON mr.mineral_status_id = ms.id AND NOT ms.direct_status
+                INNER JOIN status_list sl ON ms.status_id = sl.id
+                WHERE sl.status_group_id IN (2, 4, 5)
+            )
+            SELECT DISTINCT cte.mineral_id, ml.name, cte.relation_id, _ml.name AS relation_name, 2 AS priority FROM cte
+            INNER JOIN mineral_log ml ON cte.mineral_id = ml.id
+            INNER JOIN mineral_log _ml ON cte.relation_id = _ml.id
+            UNION
+            SELECT ml.id, ml.name, NULL AS relation_id, NULL AS relation_name, 1 AS priority
+            FROM mineral_log ml
+            INNER JOIN mineral_status ms ON ml.id = ms.mineral_id AND ms.direct_status
+            INNER JOIN status_list sl ON ms.status_id = sl.id AND sl.status_group_id IN (3, 4, 6, 10, 11)
+            WHERE NOT EXISTS (
+                SELECT 1 FROM mineral_relation mr
+                INNER JOIN mineral_status ms ON mr.mineral_status_id = ms.id AND ms.direct_status
+                INNER JOIN status_list sl ON ms.status_id = sl.id AND sl.status_group_id IN (2, 4, 5)
+                WHERE mr.relation_id = ml.id
+            )
+            UNION
+            SELECT ml.id, ml.name, NULL AS relation_id, NULL AS relation_name, 3 AS priority
+            FROM mineral_log ml
+            INNER JOIN mineral_status ms ON ml.id = ms.mineral_id AND ms.direct_status
+            INNER JOIN status_list sl ON ms.status_id = sl.id
+            WHERE NOT EXISTS (
+                SELECT 1 FROM mineral_relation mr
+                WHERE mr.mineral_id = ml.id OR mr.relation_id = ml.id
+            )
+        ) _temp
+        --WHERE name IN ('Kenotobermorite', 'Papikeite', 'Iodine', 'Oxycalciopyrochlore')
+        ORDER BY name;
+    """
+)
+
+get_cod = (
+    """
+    SELECT ml.file AS id, axc.ext_id AS amcsd_id, ml.mineral AS mineral_name, ml.a, ml.siga AS a_sigma, ml.b, ml.sigb AS b_sigma,
+           ml.c, ml.sigc AS c_sigma, ml.alpha, ml.sigalpha AS alpha_sigma, ml.beta, ml.sigbeta AS beta_sigma,
+           ml.gamma, ml.siggamma AS gamma_sigma, ml.vol AS volume, ml.sigvol AS volume_sigma, ml.sg AS space_group,
+           ml.formula, ml.calcformula AS calculated_formula,
+           CONCAT(CONCAT_WS(
+                ' ',
+                IF(ml.authors IS NOT NULL, CONCAT(REGEXP_REPLACE(ml.authors, '\\\\.$', ''), '.'), NULL),
+                IF(ml.YEAR IS NOT NULL, CONCAT('(', ml.YEAR, ')'), NULL),
+                IF(ml.title IS NOT NULL, CONCAT(REGEXP_REPLACE(ml.title, '\\\\.$', ''), '.'), NULL),
+                CONCAT_WS(
+                    ', ',
+                    IF(ml.journal IS NOT NULL, CONCAT('<i>', REGEXP_REPLACE(ml.journal, '\\\\.$', ''), '</i>'), NULL),
+                    IF(ml.volume IS NOT NULL, CONCAT('<b>', ml.volume ,'</b>'), NULL),
+                    IF(ml.firstpage IS NOT NULL, CONCAT_WS('—', ml.firstpage, ml.lastpage), NULL)
+                )
+            ), '.') AS reference,
+            CASE
+            WHEN ml.doi IS NOT NULL
+            THEN json_array(
+                CONCAT('https://www.crystallography.net/cod/', ml.file, '.html'),
+                CONCAT('https://doi.org/', ml.doi)
+            )
+            ELSE json_array(
+                CONCAT('https://www.crystallography.net/cod/', ml.file, '.html')
+            )
+            END AS links,
+           ml.compoundsource AS note
+    FROM data ml
+    LEFT JOIN amcsd_x_cod axc ON ml.file = axc.cod_id
+    WHERE ml.mineral IS NOT NULL;
+    """
 )
 
 insert_mineral_log = (
@@ -113,6 +207,28 @@ insert_mineral_formula = (
     "SELECT ml.name, ml.id AS mineral_id, ins.id, ins.formula, ins.note, ins.source_id, ins.created_at "
     "FROM ins "
     "INNER JOIN mineral_log ml ON ml.id = ins.mineral_id;"
+)
+
+insert_mineral_structure = (
+    """
+    WITH ins (id, mineral_id, cod_id, amcsd_id, source_id, a, a_sigma, b, b_sigma, c, c_sigma, alpha, alpha_sigma,
+    		  beta, beta_sigma, gamma, gamma_sigma, volume, volume_sigma, space_group, formula, calculated_formula, reference, links,
+    		  note) AS (
+           INSERT INTO mineral_structure AS ms (mineral_id, cod_id, amcsd_id, source_id, a, a_sigma, b, b_sigma, c, c_sigma, alpha, alpha_sigma,
+    		  beta, beta_sigma, gamma, gamma_sigma, volume, volume_sigma, space_group, formula, calculated_formula, reference, links,
+    		  note)
+           SELECT new.mineral_id::uuid, new.cod_id::int, new.amcsd_id::varchar, new.source_id, new.a::numeric, new.a_sigma::numeric, new.b::numeric, new.b_sigma::numeric, new.c::numeric, new.c_sigma::numeric, new.alpha::numeric, new.alpha_sigma::numeric,
+    		  new.beta::numeric, new.beta_sigma::numeric, new.gamma::numeric, new.gamma_sigma::numeric, new.volume::numeric, new.volume_sigma::numeric, new.space_group, new.formula,
+    		  new.calculated_formula, new.reference, new.links, new.note
+           FROM (VALUES %s) AS new (mineral_id, cod_id, amcsd_id, source_id, a, a_sigma, b, b_sigma, c, c_sigma, alpha, alpha_sigma,
+    		  beta, beta_sigma, gamma, gamma_sigma, volume, volume_sigma, space_group, formula, calculated_formula, reference, links,
+    		  note)
+           RETURNING ms.*
+    )
+    SELECT ml.name, ins.*
+   	FROM ins
+    INNER JOIN mineral_log ml ON ml.id = ins.mineral_id;
+    """
 )
 
 insert_mineral_status = (
@@ -165,7 +281,6 @@ insert_mineral_history = (
     "FROM ins "
     "INNER JOIN mineral_log ml ON ml.id = ins.mineral_id;"
 )
-
 
 update_mineral_log = (
     "UPDATE mineral_log AS ml SET "
