@@ -7,11 +7,12 @@ import pandas as pd
 
 from django.utils.html import strip_tags
 
-
 from src.constants import (
     STATUS_SYNONYM_UNCERTAIN,
     STATUS_UNCERTAIN_VARIETY,
     STATUS_POLYTYPE,
+    IMA_STATUS_CHOICES,
+    IMA_NOTES_CHOICES,
 )
 
 
@@ -22,6 +23,16 @@ def prepare_minerals(minerals):
         minerals_["discovery_year"], errors="coerce"
     )
     minerals_["name"] = minerals_["name"].str.strip()
+
+    minerals_["ima_status"] = minerals_["ima_status"].fillna(0).astype(np.int64)
+    minerals_["ima_note"] = minerals_["ima_note"].fillna(0).astype(np.int64)
+    minerals_["ima_status"] = minerals_["ima_status"].apply(
+        lambda x: [option for option, value in IMA_STATUS_CHOICES.items() if value & x]
+    )
+    minerals_["ima_note"] = minerals_["ima_note"].apply(
+        lambda x: [option for option, value in IMA_NOTES_CHOICES.items() if value & x]
+    )
+
     minerals_.description = minerals_.description.replace(r"", np.nan)
     minerals_.ima_symbol = minerals_.ima_symbol.replace(r"", np.nan)
 
@@ -38,6 +49,14 @@ def prepare_minerals(minerals):
     minerals_.variety_of = minerals_.variety_of.str.strip()
     minerals_.synonym_of = minerals_.synonym_of.str.strip()
     minerals_.polytype_of = minerals_.polytype_of.str.strip()
+
+    _array_cols = [
+        'transparency',
+        'tenacity',
+        'cleavage',
+        'fracture',
+        'lustre',
+    ]
 
     return minerals_
 

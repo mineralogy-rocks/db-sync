@@ -17,6 +17,20 @@ get_mineral_formula = (
     "WHERE mf.source_id > 1;"
 )
 
+get_mineral_ima_status = (
+    "SELECT ml.name, isl.key AS ima_status "
+    "FROM mineral_ima_status mis "
+    "INNER JOIN mineral_log ml ON mis.mineral_id = ml.id "
+    "INNER JOIN ima_status_list isl on mis.ima_status_id = isl.id;"
+)
+
+get_mineral_ima_note = (
+    "SELECT ml.name, isl.key AS ima_note "
+    "FROM mineral_ima_note min "
+    "INNER JOIN mineral_log ml ON min.mineral_id = ml.id "
+    "INNER JOIN ima_note_list isl on min.ima_note_id = isl.id;"
+)
+
 get_mineral_status = (
     """
     SELECT ml.name, sl.status_id, ms.direct_status
@@ -53,20 +67,36 @@ get_mineral_relation_suggestion = (
 )
 
 get_minerals = (
-    "SELECT ml.id AS mindat_id, ml.name AS name, ml.dispformulasimple AS formula, ml.imaformula as imaformula, ml.formulanotes AS note, "
-    "ml.imayear AS ima_year, "
-    "ml.yeardiscovery AS discovery_year, ml.approval_year AS approval_year, ml.publication_year AS publication_year, "
-    "ml.description, ml.shortcode_ima AS ima_symbol, ml.csystem as crystal_system, ml2.name as variety_of, "
-    "ml1.name as synonym_of, ml3.name AS polytype_of "
-    "FROM minerals ml "
-    "LEFT JOIN minerals ml1 ON ml.synid = ml1.id "
-    "LEFT JOIN minerals ml2 ON ml.varietyof = ml2.id "
-    "LEFT JOIN minerals ml3 ON ml.polytypeof = ml3.id "
-    "WHERE ml.id IN ( "
-    "    SELECT ml.id "
-    "    FROM minerals ml "
-    "    WHERE ml.name REGEXP '^[A-Za-z0-9]+'"
-    ");"
+    """
+        SELECT ml.id AS mindat_id, ml.name AS name, ml.ima_status AS ima_status, ml.ima_notes AS ima_note,
+        ml.dispformulasimple AS formula, ml.imaformula as imaformula, ml.formulanotes AS note, ml.imayear AS ima_year,
+        ml.yeardiscovery AS discovery_year, ml.approval_year AS approval_year, ml.publication_year AS publication_year,
+        ml.description, ml.shortcode_ima AS ima_symbol, ml.csystem as crystal_system, ml2.name as variety_of,
+        ml1.name as synonym_of, ml3.name AS polytype_of,
+        NULLIF(ml.colour, '') as color,
+        NULLIF(ml.diapheny, '') as transparency,
+        NULLIF(NULLIF(ml.dmeas, ''), 0) as density_measured_min, NULLIF(NULLIF(ml.dmeas2, ''), 0) as density_measured_max,
+        CASE WHEN NULLIF(ml.hmin, '') = 0 THEN NULL ELSE NULLIF(ml.hmin, '') END as hardness_min,
+        CASE WHEN NULLIF(ml.hmax, '') = 0 THEN NULL ELSE NULLIF(ml.hmax, '') END as hardness_max,
+        NULLIF(ml.tenacity, '') as tenacity,
+        NULLIF(ml.cleavagetype, '') as cleavage,
+        NULLIF(ml.cleavage, '') as cleavage_note,
+        NULLIF(ml.fracturetype, '') as fracture,
+        NULLIF(ml.fracture, '') as fracture_note,
+        NULLIF(ml.luminescence, '') as luminescence,
+        NULLIF(ml.lustretype, '') as lustre,
+        NULLIF(ml.lustre, '') as lustre_note,
+        NULLIF(ml.streak, '') as streak
+        FROM minerals ml
+        LEFT JOIN minerals ml1 ON ml.synid = ml1.id
+        LEFT JOIN minerals ml2 ON ml.varietyof = ml2.id
+        LEFT JOIN minerals ml3 ON ml.polytypeof = ml3.id
+        WHERE ml.id IN (
+            SELECT ml.id
+            FROM minerals ml
+            WHERE ml.name REGEXP '^[A-Za-z0-9]+'
+        );
+    """
 )
 
 get_relations = (
@@ -205,6 +235,34 @@ insert_mineral_formula = (
     "       RETURNING mf.id, mf.mineral_id, mf.formula, mf.note, mf.source_id, mf.created_at"
     ") "
     "SELECT ml.name, ml.id AS mineral_id, ins.id, ins.formula, ins.note, ins.source_id, ins.created_at "
+    "FROM ins "
+    "INNER JOIN mineral_log ml ON ml.id = ins.mineral_id;"
+)
+
+insert_mineral_ima_status = (
+    "WITH ins (id, mineral_id, ima_status_id) AS ( "
+    "       INSERT INTO mineral_ima_status AS mis (mineral_id, ima_status_id) "
+    "       SELECT ml.id, isl.id "
+    "       FROM (VALUES %s) AS new (name, ima_status_id) "
+    "       INNER JOIN mineral_log AS ml on ml.name = new.name "
+    "       INNER JOIN ima_status_list AS isl on isl.key = new.ima_status_id "
+    "       RETURNING mis.id, mis.mineral_id, mis.ima_status_id, mis.created_at"
+    ") "
+    "SELECT ml.name, ml.id AS mineral_id, ins.id, ins.ima_status_id, ins.created_at "
+    "FROM ins "
+    "INNER JOIN mineral_log ml ON ml.id = ins.mineral_id;"
+)
+
+insert_mineral_ima_note = (
+    "WITH ins (id, mineral_id, ima_note_id) AS ( "
+    "       INSERT INTO mineral_ima_note AS min (mineral_id, ima_note_id) "
+    "       SELECT ml.id, inl.id "
+    "       FROM (VALUES %s) AS new (name, ima_note) "
+    "       INNER JOIN mineral_log AS ml on ml.name = new.name "
+    "       INNER JOIN ima_note_list AS inl on inl.key = new.ima_note "
+    "       RETURNING min.id, min.mineral_id, min.ima_note_id, min.created_at"
+    ") "
+    "SELECT ml.name, ml.id AS mineral_id, ins.id, ins.ima_note_id, ins.created_at "
     "FROM ins "
     "INNER JOIN mineral_log ml ON ml.id = ins.mineral_id;"
 )

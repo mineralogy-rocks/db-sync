@@ -20,6 +20,8 @@ from src.queries import (
     get_mineral_crystallography,
     get_mineral_formula,
     get_mineral_history,
+    get_mineral_ima_status,
+    get_mineral_ima_note,
     get_mineral_log,
     get_mineral_relation,
     get_mineral_relation_suggestion,
@@ -31,6 +33,8 @@ from src.queries import (
     insert_mineral_formula,
     insert_mineral_status,
     insert_mineral_history,
+    insert_mineral_ima_status,
+    insert_mineral_ima_note,
     insert_mineral_log,
     insert_mineral_relation,
     insert_mineral_relation_suggestion,
@@ -82,6 +86,8 @@ class Migration:
 
         self.mineral_log = None
         self.mineral_history = None
+        self.mineral_ima_status = None
+        self.mineral_ima_note = None
         self.mineral_formula = None
         self.mineral_status = None
         self.mineral_relation = None
@@ -121,6 +127,8 @@ class Migration:
             },
             {"table_name": "mineral_status", "query": get_mineral_status},
             {"table_name": "mineral_relation", "query": get_mineral_relation},
+            {"table_name": "mineral_ima_status", "query": get_mineral_ima_status},
+            {"table_name": "mineral_ima_note", "query": get_mineral_ima_note},
         ]
 
         with concurrent.futures.ThreadPoolExecutor() as executor:
@@ -226,6 +234,84 @@ class Migration:
 
         finally:
             self.pool.putconn(conn)
+
+    def sync_mineral_ima_status(self):
+
+        assert self.mineral_ima_status is not None
+        assert self.minerals is not None
+
+        columns = [
+            'name',
+            'ima_status',
+        ]
+        _minerals = self.minerals[['name', 'ima_status']].explode('ima_status').dropna()
+
+        outer_join = self.mineral_ima_status.merge(
+            _minerals[columns], how='outer', on='name', indicator=True
+        )
+
+        # Insert
+        insert = outer_join[(outer_join._merge == "right_only")].drop("_merge", axis=1)
+        insert.drop(insert.filter(regex="_x$").columns, axis=1, inplace=True)
+        insert.rename(
+            columns=lambda column_: re.sub("_[xy]$", "", column_), inplace=True
+        )
+        insert = insert.drop_duplicates(
+            [
+                "name",
+                "ima_status",
+            ]
+        )
+        insert = insert[columns]
+
+        if len(insert) > 0:
+            try:
+                retrieved_ = self.execute_query(insert, insert_mineral_ima_status)
+                self.save_report(
+                    retrieved_, table_name="mineral_ima_status", operation="insert"
+                )
+            except Exception:
+                # TODO: save log?
+                pass
+
+    def sync_mineral_ima_note(self):
+
+        assert self.mineral_ima_note is not None
+        assert self.minerals is not None
+
+        columns = [
+            'name',
+            'ima_note',
+        ]
+        _minerals = self.minerals[['name', 'ima_note']].explode('ima_note').dropna()
+
+        outer_join = self.mineral_ima_status.merge(
+            _minerals[columns], how='outer', on='name', indicator=True
+        )
+
+        # Insert
+        insert = outer_join[(outer_join._merge == "right_only")].drop("_merge", axis=1)
+        insert.drop(insert.filter(regex="_x$").columns, axis=1, inplace=True)
+        insert.rename(
+            columns=lambda column_: re.sub("_[xy]$", "", column_), inplace=True
+        )
+        insert = insert.drop_duplicates(
+            [
+                "name",
+                "ima_note",
+            ]
+        )
+        insert = insert[columns]
+
+        if len(insert) > 0:
+            try:
+                retrieved_ = self.execute_query(insert, insert_mineral_ima_note)
+                self.save_report(
+                    retrieved_, table_name="mineral_ima_note", operation="insert"
+                )
+            except Exception:
+                # TODO: save log?
+                pass
 
     def sync_mineral_log(self):
 
