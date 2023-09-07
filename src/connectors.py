@@ -3,6 +3,7 @@ import concurrent.futures
 import os
 import re
 import sys
+import json
 from datetime import datetime
 from time import perf_counter
 
@@ -11,7 +12,7 @@ import pandas as pd
 from dotenv import load_dotenv
 from psycopg2 import Error as psycopgError
 from psycopg2.extensions import AsIs, register_adapter
-from psycopg2.extras import execute_values
+from psycopg2.extras import execute_values, Json
 from psycopg2.pool import ThreadedConnectionPool
 
 from src.queries import (
@@ -29,6 +30,7 @@ from src.queries import (
     get_minerals,
     get_relations,
     get_cod,
+    insert_mineral_context,
     insert_mineral_crystallography,
     insert_mineral_formula,
     insert_mineral_status,
@@ -52,6 +54,8 @@ from src.utils import (
 )
 
 register_adapter(np.int64, AsIs)
+register_adapter(dict, Json)
+
 load_dotenv(".envs/.local/.mindat")
 load_dotenv(".envs/.prod/.cod")
 
@@ -85,6 +89,7 @@ class Migration:
         self.pool = None
 
         self.mineral_log = None
+        self.mineral_context = None
         self.mineral_history = None
         self.mineral_ima_status = None
         self.mineral_ima_note = None
@@ -308,6 +313,43 @@ class Migration:
                 retrieved_ = self.execute_query(insert, insert_mineral_ima_note)
                 self.save_report(
                     retrieved_, table_name="mineral_ima_note", operation="insert"
+                )
+            except Exception:
+                # TODO: save log?
+                pass
+
+    def sync_mineral_context(self):
+
+        assert self.minerals is not None
+
+        columns = [
+            'name',
+            'data',
+            'context_id',
+        ]
+        # minerals = migrate.minerals.copy()
+        _minerals = self.minerals[['name', 'physical_context', 'optical_context']].copy()
+        _physical_context = _minerals[['name', 'physical_context']].dropna()
+        _physical_context['context_id'] = 1
+        _physical_context.rename(columns={'physical_context': 'data'}, inplace=True)
+        _optical_context = _minerals[['name', 'optical_context']].dropna()
+        _optical_context['context_id'] = 2
+        _optical_context.rename(columns={'optical_context': 'data'}, inplace=True)
+        insert = pd.concat([_physical_context, _optical_context], axis=0)
+        insert['data'] = insert['data'].apply(lambda x: {k: v if not isinstance(v, float) or not np.isnan(v) else None for k, v in x.items()})
+        insert = insert[columns]
+
+        if len(insert) > 0:
+            _conn = self.pool.getconn()
+            with _conn.cursor() as cursor:
+                cursor.execute("TRUNCATE TABLE mineral_context RESTART IDENTITY")
+                _conn.commit()
+                cursor.close()
+            self.pool.putconn(_conn)
+            try:
+                retrieved_ = self.execute_query(insert, insert_mineral_context)
+                self.save_report(
+                    retrieved_, table_name="mineral_context", operation="insert"
                 )
             except Exception:
                 # TODO: save log?
@@ -879,7 +921,7 @@ class Migration:
 
         _conn = self.pool.getconn()
         _cursor = _conn.cursor()
-        # _cursor.mogrify(query % tuples[:10])
+        _cursor.mogrify(query % tuples[:10])
 
         try:
             retrieved = execute_values(_cursor, query, tuples, fetch=True)

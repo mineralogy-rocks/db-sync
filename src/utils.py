@@ -50,13 +50,63 @@ def prepare_minerals(minerals):
     minerals_.synonym_of = minerals_.synonym_of.str.strip()
     minerals_.polytype_of = minerals_.polytype_of.str.strip()
 
-    _array_cols = [
-        'transparency',
-        'tenacity',
-        'cleavage',
-        'fracture',
-        'lustre',
+    # minerals_ = migrate.minerals.copy()
+
+    _strip_cols = [
+        'physical_color',
+        'physical_streak',
+        'physical_cleavageNote',
+        'physical_fractureNote',
+        'physical_luminescence',
+        'physical_lustreNote',
+
+        'optical_type',
+        'optical_sign',
+        'optical_extinction',
+        'optical_dispersion',
+        'optical_anisotropism',
+        'optical_bireflectance',
+        'optical_dispersion',
+        'optical_pleochroism',
+        'optical_pleochroismNote',
     ]
+    _array_cols = [
+        'physical_transparency',
+        'physical_tenacity',
+        'physical_cleavage',
+        'physical_fracture',
+        'physical_lustre',
+    ]
+    _capitalize_cols = [
+        'physical_color',
+        'physical_luminescence',
+        'physical_streak',
+
+        'optical_color',
+        'optical_tropic',
+        'optical_anisotropism',
+        'optical_bireflectance',
+        'optical_dispersion',
+    ]
+
+    for _context in ['physical', 'optical']:
+        _cols = [col for col in minerals_.columns if _context + '_' in col]
+        for _col in _cols:
+            if _col in _strip_cols:
+                minerals_[_col] = minerals_[_col].str.strip()
+                # _mask = minerals_[_col].notnull()
+                # minerals_.loc[_mask, _col] = minerals_.loc[_mask, _col].apply(lambda x: x.strip() if x and isinstance(x, str) else np.nan)
+            if _col in _array_cols:
+                _mask = minerals_[_col].notnull()
+                minerals_.loc[_mask, _col] = minerals_.loc[_mask, _col].apply(lambda x: x.split(',') if x else np.nan)
+            if _col in _capitalize_cols:
+                # minerals_[_col] = minerals_[_col].str.strip()
+                minerals_[_col] = minerals_[_col].str.capitalize()
+
+        _mask = minerals_[_cols].notnull().any(axis=1)
+        _temp = minerals_.loc[_mask, _cols].copy()
+        _temp.columns = _temp.columns.str.replace(_context + '_', '', regex=True)
+        minerals_.loc[_mask, _context + '_context'] = _temp.to_dict(orient='records')
 
     return minerals_
 

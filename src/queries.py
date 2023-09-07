@@ -73,20 +73,59 @@ get_minerals = (
         ml.yeardiscovery AS discovery_year, ml.approval_year AS approval_year, ml.publication_year AS publication_year,
         ml.description, ml.shortcode_ima AS ima_symbol, ml.csystem as crystal_system, ml2.name as variety_of,
         ml1.name as synonym_of, ml3.name AS polytype_of,
-        NULLIF(ml.colour, '') as color,
-        NULLIF(ml.diapheny, '') as transparency,
-        NULLIF(NULLIF(ml.dmeas, ''), 0) as density_measured_min, NULLIF(NULLIF(ml.dmeas2, ''), 0) as density_measured_max,
-        CASE WHEN NULLIF(ml.hmin, '') = 0 THEN NULL ELSE NULLIF(ml.hmin, '') END as hardness_min,
-        CASE WHEN NULLIF(ml.hmax, '') = 0 THEN NULL ELSE NULLIF(ml.hmax, '') END as hardness_max,
-        NULLIF(ml.tenacity, '') as tenacity,
-        NULLIF(ml.cleavagetype, '') as cleavage,
-        NULLIF(ml.cleavage, '') as cleavage_note,
-        NULLIF(ml.fracturetype, '') as fracture,
-        NULLIF(ml.fracture, '') as fracture_note,
-        NULLIF(ml.luminescence, '') as luminescence,
-        NULLIF(ml.lustretype, '') as lustre,
-        NULLIF(ml.lustre, '') as lustre_note,
-        NULLIF(ml.streak, '') as streak
+        NULLIF(ml.colour, '') as physical_color,
+        NULLIF(ml.diapheny, '') as physical_transparency,
+        CAST(NULLIF(NULLIF(ml.dmeas, ''), 0) AS DECIMAL(5,3)) as physical_densityMeasuredMin,
+        CAST(NULLIF(NULLIF(ml.dmeas2, ''), 0) AS DECIMAL(5,3)) as physical_densityMeasuredMax,
+        CAST(NULLIF(NULLIF(ml.dcalc, ''), 0) AS DECIMAL(5,3)) as physical_densityCalculated,
+        CASE WHEN NULLIF(ml.hmin, '') = 0 THEN NULL ELSE NULLIF(ml.hmin, '') END as physical_hardnessMin,
+        CASE WHEN NULLIF(ml.hmax, '') = 0 THEN NULL ELSE NULLIF(ml.hmax, '') END as physical_hardnessMax,
+        NULLIF(ml.tenacity, '') as physical_tenacity,
+        NULLIF(ml.cleavagetype, '') as physical_cleavage,
+        NULLIF(ml.cleavage, '') as physical_cleavageNote,
+        NULLIF(ml.fracturetype, '') as physical_fracture,
+        NULLIF(ml.fracture, '') as physical_fractureNote,
+        NULLIF(ml.luminescence, '') as physical_luminescence,
+        NULLIF(ml.lustretype, '') as physical_lustre,
+        NULLIF(ml.lustre, '') as physical_lustreNote,
+        NULLIF(ml.streak, '') as physical_streak,
+        NULLIF(ml.opticaltype, '') as optical_type,
+        NULLIF(ml.opticalsign, '') as optical_sign,
+        NULLIF(ml.opticalextinction, '') as optical_extinction,
+        CASE WHEN NULLIF(ml.opticalalpha, '') = 0 THEN NULL ELSE NULLIF(ml.opticalalpha, '') END as optical_alphaMin,
+        CASE WHEN NULLIF(ml.opticalalpha2, '') = 0 THEN NULL ELSE NULLIF(ml.opticalalpha2, '') END as optical_alphaMax,
+        NULLIF(ml.opticalalphaerror, '') as optical_alphaError,
+        CASE WHEN NULLIF(ml.opticalbeta, '') = 0 THEN NULL ELSE NULLIF(ml.opticalbeta, '') END as optical_betaMin,
+        CASE WHEN NULLIF(ml.opticalbeta2, '') = 0 THEN NULL ELSE NULLIF(ml.opticalbeta2, '') END as optical_betaMax,
+        NULLIF(ml.opticalbetaerror, '') as optical_betaError,
+        CASE WHEN NULLIF(ml.opticalgamma, '') = 0 THEN NULL ELSE NULLIF(ml.opticalgamma, '') END as optical_gammaMin,
+        CASE WHEN NULLIF(ml.opticalgamma2, '') = 0 THEN NULL ELSE NULLIF(ml.opticalgamma2, '') END as optical_gammaMax,
+        NULLIF(ml.opticalgammaerror, '') as optical_gammaError,
+        CAST(CASE WHEN NULLIF(ml.opticalomega, '') = 0 THEN NULL ELSE NULLIF(ml.opticalomega, '') END AS DECIMAL(5,3)) as optical_omegaMin,
+        CAST(CASE WHEN NULLIF(ml.opticalomega2, '') = 0 THEN NULL ELSE NULLIF(ml.opticalomega2, '') END AS DECIMAL(5,3)) as optical_omegaMax,
+        NULLIF(ml.opticalomegaerror, '') as optical_omegaError,
+        CAST(CASE WHEN NULLIF(ml.opticalepsilon, '') = 0 THEN NULL ELSE NULLIF(ml.opticalepsilon, '') END AS DECIMAL(5,3)) as optical_epsilonMin,
+        CAST(CASE WHEN NULLIF(ml.opticalepsilon2, '') = 0 THEN NULL ELSE NULLIF(ml.opticalepsilon2, '') END AS DECIMAL(5,3)) as optical_epsilonMax,
+        NULLIF(ml.opticalepsilonerror, '') as optical_epsilonError,
+        CASE WHEN NULLIF(ml.optical2vcalc, '') = 0 THEN NULL ELSE NULLIF(ml.optical2vcalc, '') END as optical_2vMin,
+        CASE WHEN NULLIF(ml.optical2vcalc2, '') = 0 THEN NULL ELSE NULLIF(ml.optical2vcalc2, '') END as optical_2vMax,
+        NULLIF(ml.optical2vcalcerror, '') as optical_2vError,
+        CASE WHEN NULLIF(ml.optical2vmeasured, '') = 0 THEN NULL ELSE NULLIF(ml.optical2vmeasured, '') END as optical_2vMeasuredMin,
+        CASE WHEN NULLIF(ml.optical2vmeasured2, '') = 0 THEN NULL ELSE NULLIF(ml.optical2vmeasured2, '') END as optical_2vMeasuredMax,
+        NULLIF(ml.optical2vmeasurederror, '') as optical_2vMeasuredError,
+        CASE WHEN NULLIF(ml.opticaln, '') = 0 THEN NULL ELSE NULLIF(ml.opticaln, '') END as optical_nMin,
+        CASE WHEN NULLIF(ml.opticaln2, '') = 0 THEN NULL ELSE NULLIF(ml.opticaln2, '') END as optical_nMax,
+        NULLIF(ml.opticalnerror, '') as optical_nError,
+        NULLIF(ml.opticaldispersion, '') as optical_dispersion,
+        NULLIF(ml.opticalpleochroism, '') as optical_pleochroism,
+        NULLIF(ml.opticalpleochorismdesc, '') as optical_pleochroismNote,
+        NULLIF(ml.opticalbirefringence, '') as optical_birefringence,
+        NULLIF(ml.opticalcomments, '') as optical_comments,
+        NULLIF(ml.opticalcolour, '') as optical_color,
+        NULLIF(ml.opticaltropic, '') as optical_tropic,
+        NULLIF(ml.opticalanisotropism, '') as optical_anisotropism,
+        NULLIF(ml.opticalbireflectance, '') as optical_bireflectance,
+        NULLIF(ml.opticalr, '') as optical_r
         FROM minerals ml
         LEFT JOIN minerals ml1 ON ml.synid = ml1.id
         LEFT JOIN minerals ml2 ON ml.varietyof = ml2.id
@@ -265,6 +304,23 @@ insert_mineral_ima_note = (
     "SELECT ml.name, ml.id AS mineral_id, ins.id, ins.ima_note_id, ins.created_at "
     "FROM ins "
     "INNER JOIN mineral_log ml ON ml.id = ins.mineral_id;"
+)
+
+insert_mineral_context = (
+    """
+    WITH ins (id, mineral_id, data, context_id) AS (
+        INSERT INTO mineral_context AS mc (mineral_id, data, context_id)
+        SELECT ml.id, new.data::jsonb, dcl.id
+        FROM (VALUES %s) AS new (name, data, context_id)
+        INNER JOIN mineral_log AS ml ON ml.name = new.name
+        INNER JOIN data_context_list AS dcl ON dcl.id = new.context_id
+        RETURNING mc.id, mc.mineral_id, mc.data, mc.context_id
+    )
+    SELECT ml.name, ml.id AS mineral_id, ins.id, ins.data, dcl.name AS context
+    FROM ins
+    INNER JOIN mineral_log ml ON ml.id = ins.mineral_id
+    INNER JOIN data_context_list dcl ON dcl.id = ins.context_id;
+    """
 )
 
 insert_mineral_structure = (
