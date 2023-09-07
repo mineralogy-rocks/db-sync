@@ -11,7 +11,7 @@ confection==0.1.1
 cymem==2.0.7
 distlib==0.3.5
 Django==4.1.7
-en-core-web-sm @ https://github.com/explosion/spacy-models/releases/download/en_core_web_sm-3.6.0/en_core_web_sm-3.6.0-py3-none-any.whl#sha256=83276fc78a70045627144786b52e1f2728ad5e29e5e43916ec37ea9c26a11212
+en-colorExtractor @ https://huggingface.co/liubomyrgavryliv/en_colorExtractor/resolve/main/en_colorExtractor-any-py3-none-any.whl
 filelock==3.8.0
 greenlet==1.1.3
 identify==2.5.3

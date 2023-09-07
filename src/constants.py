@@ -23,3 +23,28 @@ IMA_NOTES_CHOICES = {
     "UNNAMED_INVALID": 256,
     "NAMED_AMPHIBOLE": 512,
 }
+
+BASE_COLORS_MAP = [
+    ('black', 'black'),
+    ('blue', 'blu'),
+    ('brown', 'brown'),
+    ('green', 'green'),
+    ('grey', 'gr[ae]y'),
+    ('orange', 'orang'),
+    ('pink', 'pink'),
+    ('purple', 'purpl'),
+    ('red', 'red'),
+    ('white', 'whit'),
+    ('yellow', 'yellow'),
+    ('violet', 'violet'),
+    ('indigo', 'indig'),
+    ('cyan', 'cyan'),
+    ('magenta', 'magent'),
+    ('turquoise', 'turquois'),
+    ('azure', 'azur'),
+    ('beige', 'beig'),
+    ('coral', 'coral'),
+    ('gold', 'gold'),
+    ('cream', 'cream'),
+    ('colorless', 'colou?rless'),
+]

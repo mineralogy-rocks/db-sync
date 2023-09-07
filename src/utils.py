@@ -14,6 +14,7 @@ from src.constants import (
     IMA_STATUS_CHOICES,
     IMA_NOTES_CHOICES,
 )
+from src.ner import recognize_colors
 
 
 def prepare_minerals(minerals):
@@ -78,15 +79,17 @@ def prepare_minerals(minerals):
         'physical_lustre',
     ]
     _capitalize_cols = [
-        'physical_color',
         'physical_luminescence',
-        'physical_streak',
 
         'optical_color',
         'optical_tropic',
         'optical_anisotropism',
         'optical_bireflectance',
         'optical_dispersion',
+    ]
+    _color_cols = [
+        'physical_color',
+        'physical_streak',
     ]
 
     for _context in ['physical', 'optical']:
@@ -102,6 +105,10 @@ def prepare_minerals(minerals):
             if _col in _capitalize_cols:
                 # minerals_[_col] = minerals_[_col].str.strip()
                 minerals_[_col] = minerals_[_col].str.capitalize()
+            if _col in _color_cols:
+                minerals_[_col + 'Note'] = minerals_[_col].str.capitalize()
+                _mask = minerals_[_col].notnull()
+                minerals_.loc[_mask, _col] = minerals_.loc[_mask, _col].apply(lambda x: recognize_colors(x) if x else np.nan)
 
         _mask = minerals_[_cols].notnull().any(axis=1)
         _temp = minerals_.loc[_mask, _cols].copy()
