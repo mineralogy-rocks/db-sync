@@ -45,6 +45,7 @@ BASE_COLORS_MAP = [
     ('beige', 'beig'),
     ('coral', 'coral'),
     ('gold', 'gold'),
+    ('silver', 'silver'),
     ('cream', 'cream'),
-    ('colorless', 'colou?rless'),
+    # ('colorless', 'colou?rless'),
 ]

@@ -33,18 +33,23 @@ def recognize_colors(notes):
     notes = ', '.join(notes)
     doc = nlp(notes)
 
-    for _entity in doc.ents:
-        _entities = re.split(r'[-\s]', _entity.text)
-        last_word = _entities[-1]
-        match = re.match(BASE_COLORS_REGEX, last_word)
-        if match:
-            _color = match.lastgroup
-            if _entity.text != _color:
-                colors[_color].append(_entity.text)
+    for entity in doc.ents:
+        text = entity.text
+        _entities = re.split(r'[-\s]', text)
+        _color = None
+
+        for _entity in _entities[::-1]:
+            match = re.match(BASE_COLORS_REGEX, _entity)
+            if match:
+                _color = match.lastgroup
+                break
+        if _color:
+            if text != _color:
+                colors[_color].append(text)
             else:
                 colors[_color]
         else:
-            colors['other'].append(_entity.text)
+            colors['other'].append(text)
 
     colors_list = [{'primaryColor': color, 'entities': entities} for color, entities in colors.items()]
     # print(doc.ents)

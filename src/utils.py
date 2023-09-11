@@ -107,6 +107,7 @@ def prepare_minerals(minerals):
                 minerals_[_col] = minerals_[_col].str.capitalize()
             if _col in _color_cols:
                 minerals_[_col + 'Note'] = minerals_[_col].str.capitalize()
+                _cols += [_col + 'Note']
                 _mask = minerals_[_col].notnull()
                 minerals_.loc[_mask, _col] = minerals_.loc[_mask, _col].apply(lambda x: recognize_colors(x) if x else np.nan)
 
