@@ -1,9 +1,10 @@
 # -*- coding: UTF-8 -*-
 from src.connectors import Migration
 
+
 def main():
 
-    migrate = Migration(env='dev')
+    migrate = Migration(env="dev")
 
     try:
         migrate.connect_db()

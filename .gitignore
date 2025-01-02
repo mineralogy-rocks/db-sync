@@ -139,3 +139,5 @@ db/reports/*
 # disable all in .idea folder
 .idea/**/*
 
+data/georoc/*.csv
+
