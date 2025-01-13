@@ -1,7 +1,6 @@
 import os
 
 import polars as pl
-import numpy as np
 
 
 path = 'data/georoc/'
@@ -19,11 +18,15 @@ def _get_files(path, format='csv'):
 
     return _files
 
-_cols = [
+
+_meta_cols = [
     'CITATION', 'SAMPLE NAME', 'TECTONIC SETTING', 'LOCATION', 'LOCATION COMMENT', 'LATITUDE (MIN.)', 'LATITUDE (MAX.)',
     'LONGITUDE (MIN.)', 'LONGITUDE (MAX.)', 'ELEVATION (MIN.)', 'ELEVATION (MAX.)', 'ROCK NAME',
     'ROCK TEXTURE', 'DRILLING DEPTH (MIN.)', 'DRILLING DEPTH (MAX.)', 'ALTERATION', 'MINERAL', 'SPOT', 'CRYSTAL',
-    'RIM/CORE (MINERAL GRAINS)', 'GRAIN SIZE', 'PRIMARY/SECONDARY', 'SIO2(WT%)', 'TIO2(WT%)', 'ZRO2(WT%)',
+    'RIM/CORE (MINERAL GRAINS)', 'GRAIN SIZE', 'PRIMARY/SECONDARY',
+]
+_chem_cols = [
+    'SIO2(WT%)', 'TIO2(WT%)', 'ZRO2(WT%)',
     'HFO2(WT%)', 'THO2(WT%)', 'UO2(WT%)', 'AL2O3(WT%)', 'CR2O3(WT%)', 'LA2O3(WT%)', 'CE2O3(WT%)',
     'ND2O3(WT%)', 'SM2O3(WT%)', 'EU2O3(WT%)', 'EUO(WT%)', 'GD2O3(WT%)', 'TB2O3(WT%)', 'DY2O3(WT%)',
     'HO2O3(WT%)', 'ER2O3(WT%)', 'TM2O3(WT%)', 'YB2O3(WT%)', 'LU2O3(WT%)', 'Y2O3(WT%)', 'V2O3(WT%)',
@@ -39,22 +42,109 @@ _cols = [
     'CO(PPM)', 'NI(PPM)', 'CU(PPM)', 'ZN(PPM)', 'GA(PPM)', 'GE(PPM)', 'AS(PPM)', 'SE(PPM)', 'BR(PPM)',
     'RB(PPM)', 'SR(PPM)', 'Y(PPM)', 'ZR(PPM)', 'NB(PPM)', 'MO(PPM)', 'MO95(PPM)', 'MO97(PPM)', 'MO98(PPM)',
     'MO100(PPM)', 'RU(PPB)', 'RH(PPM)', 'PD(PPB)', 'AG(PPM)', 'CD(PPM)', 'IN(PPM)', 'SN(PPM)', 'SB(PPM)',
-    'TE(PPM)', 'CS(PPM)', 'BA(PPM)', 'LA(PPM)', 'CE(PPM)', 'PR(PPM)', 'ND(PPM)', 'SM(PPM)', 'EU(PPM)', 'GD(PPM)', 'TB(PPM)',
-    'DY(PPM)', 'HO(PPM)', 'ER(PPM)', 'TM(PPM)', 'YB(PPM)', 'LU(PPM)', 'HF(PPM)', 'TA(PPM)', 'W(PPM)', 'RE(PPM)', 'OS(PPB)',
-    'IR(PPB)', 'PT(PPM)', 'PT(PPB)', 'AU(PPM)', 'TL(PPM)', 'PB(PPM)', 'BI(PPM)', 'TH(PPM)', 'U(PPM)', 'CO2(PPM)',
+    'TE(PPM)', 'CS(PPM)', 'BA(PPM)', 'LA(PPM)', 'CE(PPM)', 'PR(PPM)', 'ND(PPM)', 'SM(PPM)', 'EU(PPM)', 'GD(PPM)',
+    'TB(PPM)', 'DY(PPM)', 'HO(PPM)', 'ER(PPM)', 'TM(PPM)', 'YB(PPM)', 'LU(PPM)', 'HF(PPM)', 'TA(PPM)', 'W(PPM)', 'RE(PPM)',
+    'OS(PPB)', 'IR(PPB)', 'PT(PPM)', 'PT(PPB)', 'AU(PPM)', 'TL(PPM)', 'PB(PPM)', 'BI(PPM)', 'TH(PPM)', 'U(PPM)', 'CO2(PPM)',
 ]
-data = pl.read_csv('data/georoc/2024-12-SGFTFN_CARBONATES.csv', encoding='utf8-lossy', ignore_errors=True, columns=_cols)
+_cols = _meta_cols + _chem_cols
 
-# add new column ID
-_minerals = data.select(
-    pl.col('MINERAL').value_counts()
-)
 
 def _get_data(filename):
-    return pl.read_csv(filename, encoding='utf8-lossy', separator=',', ignore_errors=True, columns=_cols)
+    # filename = 'data/georoc/Clinopyroxenes Dec 2024.csv'
+    _data = pl.scan_csv(filename, ignore_errors=True, encoding='utf8-lossy', null_values=['', ' ']).with_row_index()
+    _colnames = _data.collect_schema().names()
+
+    _data = _data.select(['index'] + [_col for _col in _cols if _col in _colnames])
+    _missing_cols = [_col for _col in _cols if _col not in _colnames[1:]]
+
+    _data = _data.with_columns(
+        [pl.col(_col).cast(pl.Float32, strict=False).alias(_col) for _col in _chem_cols if _col not in _missing_cols],
+    )
+    _data = _data.with_columns(
+        [pl.col('SPOT').cast(pl.Utf8, strict=False).alias('SPOT')],
+    )
+    _data = _data.filter(
+        pl.any_horizontal([~pl.col(_col).is_null() for _col in _chem_cols if _col not in _missing_cols]) |
+        pl.all_horizontal([pl.col(_col).is_null() for _col in _cols if _col not in _missing_cols])
+    )
+    _data = _data.collect()
+
+    _broken_lines = _data.filter(
+        (pl.col('CRYSTAL').str.contains(r'^\d+\.\d+$') | pl.col('RIM/CORE (MINERAL GRAINS)').str.contains(
+            r'^\d+\.\d+$'))
+    ).select(pl.col('index'))
+    _data = _data.filter(~pl.col('index').is_in(_broken_lines))
+
+    _data = _data.with_columns(
+        [pl.lit(None).alias(_col) for _col in _missing_cols],
+    )
+
+    # Offset: detect row id after which the citations follow
+    _offset = _data.filter(pl.col('CITATION').is_null()).select(pl.col('index'))
+    if len(_offset):
+        # TODO extract citations
+        _citations = _data.filter(
+            pl.col('index') > _offset
+        )
+        _data = _data.filter(
+            pl.col('index') < _offset
+        )
+
+    # Unique ID is the `citation number-sample name-rank`
+    _data = _data.with_columns(
+        SPOT=pl.col('SPOT').str.replace(r'\s+$', ''),
+        ID=pl.col('CITATION').str.extract(r'\[(\d+)\]') + '-' + pl.col('SAMPLE NAME'),
+    )
+    _data = _data.with_columns(
+        rank=pl.col('ID').rank('ordinal').over('ID')
+    )
+    _data = _data.with_columns(
+        pl.when(pl.col('ID').is_duplicated())
+        .then(pl.col('ID') + '-' + pl.col('rank').cast(pl.Utf8))
+        .otherwise(pl.col('ID'))
+    )
+    _data = _data.select(pl.col(['ID'] + _cols))
+    return _data
+
 
 
 _filenames = _get_files(path, format)
-data = pl.DataFrame()
+data = pl.DataFrame(schema=['ID'] + _cols)
 for file in _filenames:
-    data = data.vstack(_get_data(path + file))
+    print(f'Processing {file}')
+    data = pl.concat([data, _get_data(path + file)], how='vertical_relaxed')
+
+
+# Extract enums for the db - this is needed one-time only, regenerate on purpose
+TECTONIC_SETTING_CHOICES = data.filter(
+    pl.col('TECTONIC SETTING').is_not_null()
+).select(
+    pl.col('TECTONIC SETTING').unique().sort()
+)
+
+ROCK_NAME_CHOICES = data.filter(
+    pl.col('ROCK NAME').is_not_null()
+).select(
+    pl.col('ROCK NAME').unique().sort()
+)
+
+MINERAL_CHOICES = data.filter(
+    pl.col('MINERAL').is_not_null()
+).select(
+    pl.col('MINERAL').unique().sort()
+)
+
+ALTERATION_CHOICES = data.filter(
+    pl.col('ALTERATION').is_not_null()
+).select(
+    pl.col('ALTERATION').unique().sort()
+)
+
+PRIMARY_SECONDARY_CHOICES = data.filter(
+    pl.col('PRIMARY/SECONDARY').is_not_null()
+).select(
+    pl.col('PRIMARY/SECONDARY').unique().sort()
+)
+
+data.write_csv('data/generated/georoc.csv')
+

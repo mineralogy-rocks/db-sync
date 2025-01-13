@@ -237,6 +237,22 @@ get_cod = (
     """
 )
 
+get_chem_measurement = (
+    """
+
+    """
+)
+
+insert_chem_measurement = (
+    """
+    INSERT INTO chem_measurement AS cm (mineral_id, key, resource, sample_name, grain_size, rock_name, rock_texture, alteration, primary_secondary, tectonic_setting)
+    SELECT ml.id, new.key, new.resource, new.sample_name, new.grain_size, new.rock_name, new.rock_texture, new.alteration, new.primary_secondary, new.tectonic_setting
+    FROM (VALUES %s) AS new (name, key, resource, sample_name, grain_size, rock_name, rock_texture, alteration, primary_secondary, tectonic_setting)
+    INNER JOIN mineral_log AS ml ON ml.name = new.name
+    RETURNING cm.id, cm.mineral_id, cm.key, cm.resource, cm.sample_name, cm.grain_size, cm.rock_name, cm.rock_texture, cm.alteration, cm.primary_secondary, cm.tectonic_setting;
+    """
+)
+
 insert_mineral_log = (
     "INSERT INTO mineral_log AS ml (name, description, mindat_id, ima_symbol) VALUES %s "
     "RETURNING ml.id, ml.name, ml.description, ml.mindat_id, ml.ima_symbol;"

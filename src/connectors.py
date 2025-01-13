@@ -914,6 +914,21 @@ class Migration:
             pass
 
 
+    def sync_digis(self):
+        _georoc = self.cod
+        _alternative_names = self.get_alternative_names()
+        insert = prepare_mineral_structure(_cod, _alternative_names)
+
+        try:
+            retrieved_ = self.execute_query(insert, insert_mineral_structure)
+            self.save_report(
+                retrieved_, table_name="mineral_structure", operation="insert"
+            )
+        except Exception:
+            # TODO: save log?
+            pass
+
+
     def execute_query(self, df, query):
 
         df = df.replace({np.nan: None})

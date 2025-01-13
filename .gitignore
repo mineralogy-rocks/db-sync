@@ -140,4 +140,5 @@ db/reports/*
 .idea/**/*
 
 data/georoc/*.csv
+data/generated/*.csv
 

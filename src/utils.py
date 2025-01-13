@@ -1,9 +1,12 @@
 # -*- coding: UTF-8 -*-
+import os
+
 import re
 import json
 
 import numpy as np
 import pandas as pd
+import polars as pl
 
 from django.utils.html import strip_tags
 
@@ -13,6 +16,7 @@ from src.constants import (
     STATUS_POLYTYPE,
     IMA_STATUS_CHOICES,
     IMA_NOTES_CHOICES,
+    ALTERATION_CHOICES,
 )
 from src.ner import recognize_colors
 
@@ -551,6 +555,24 @@ def prepare_mineral_structure(cod, alternative_names):
     #     f.write(data.loc[0:1000].to_html(escape=False, index=False))
 
     return data
+
+
+def prepare_chem_measurement():
+    if not os.path.exists('data/generated/georoc.csv'):
+        raise FileNotFoundError('File not found: data/generated/georoc.csv')
+
+    data = pl.read_csv('data/generated/georoc.csv', ignore_errors=True)
+    data.with_columns(
+        pl.col('ALTERATION').str.to_uppercase()
+    )
+
+    # substitute ALTERATION in table with the corresponding value from ALTERATION_CHOICES
+    data.with_columns(
+        pl.when(pl.col('ALTERATION').str.to_uppercase().is_in([_[1].upper() for _ in ALTERATION_CHOICES]))
+        .then([_[0] for _ in ALTERATION_CHOICES if pl.col('ALTERATION').str.to_uppercase().is_in(_[1].upper())])
+        .otherwise(pl.lit(None))
+    )
+
 
 
 def _calculate_sigma(dataframe, column_name):

@@ -49,3 +49,30 @@ BASE_COLORS_MAP = [
     ('cream', 'cream'),
     # ('colorless', 'colou?rless'),
 ]
+
+ALTERATION_CHOICES = (
+    (1, "Almost totally altered"),
+    (2, "Extensively altered"),
+    (3, "Fresh"),
+    (4, "Moderately altered"),
+    (5, "Slightly altered"),
+)
+
+PRIMARY_SECONDARY_CHOICES = (
+    (1, "Primary"),
+    (2, "Secondary"),
+)
+
+TECTONIC_SETTING_CHOICES = (
+    (1, "Archean Craton (including Greenstone Belts)"),
+    (2, "Complex Volcanic Settings"),
+    (3, "Continental Flood Basalt"),
+    (4, "Convergent Margin"),
+    (5, "Intraplate Volcanics"),
+    (6, "Ocean Island"),
+    (7, "Ocean-basin Flood Basalt"),
+    (8, "Oceanic Plateau"),
+    (9, "Rift Volcanics"),
+    (10, "Seamount"),
+    (11, "Submarine Ridge"),
+)
