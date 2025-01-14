@@ -1,10 +1,14 @@
 import os
 
 import polars as pl
+from dotenv import load_dotenv
+
+from src.connectors import Migration
+from src.constants import TECTONIC_SETTING_CHOICES, ALTERATION_CHOICES, PRIMARY_SECONDARY_CHOICES, GEOROC_REPLACEMENTS
 
 
-path = 'data/georoc/'
-format = 'csv'
+PATH = 'data/georoc/'
+FORMAT = 'csv'
 
 def _get_files(path, format='csv'):
 
@@ -49,6 +53,27 @@ _chem_cols = [
 _cols = _meta_cols + _chem_cols
 
 
+def _idealize(data):
+    _data = data.with_columns(
+        (
+            pl.when(pl.col('SAMPLE NAME').is_not_null())
+                .then(pl.col('CITATION').str.extract(r'\[(\d+)\]') + '-' + pl.col('SAMPLE NAME'))
+                .otherwise(pl.col('CITATION').str.extract(r'\[(\d+)\]'))
+                .alias('ID')
+        ),
+        SPOT=pl.col('SPOT').str.replace(r'\s+$', ''),
+    )
+    _data = _data.with_columns(
+        rank=pl.col('ID').rank('ordinal').over('ID')
+    )
+    _data = _data.with_columns(
+        pl.when(pl.col('ID').is_duplicated())
+        .then(pl.col('ID') + '-' + pl.col('rank').cast(pl.Utf8))
+        .otherwise(pl.col('ID'))
+    )
+    return _data
+
+
 def _get_data(filename):
     # filename = 'data/georoc/Clinopyroxenes Dec 2024.csv'
     _data = pl.scan_csv(filename, ignore_errors=True, encoding='utf8-lossy', null_values=['', ' ']).with_row_index()
@@ -61,7 +86,16 @@ def _get_data(filename):
         [pl.col(_col).cast(pl.Float32, strict=False).alias(_col) for _col in _chem_cols if _col not in _missing_cols],
     )
     _data = _data.with_columns(
-        [pl.col('SPOT').cast(pl.Utf8, strict=False).alias('SPOT')],
+        pl.col('SPOT').cast(pl.Utf8, strict=False).alias('SPOT'),
+    )
+    _data = _data.with_columns(
+        [
+            pl.when(pl.col(_col).is_not_null())
+            .then(pl.col(_col).cast(pl.Utf8).str.replace(r'\s+$', ''))
+            .otherwise(pl.col(_col))
+            .alias(_col)
+            for _col in _meta_cols if _col not in _missing_cols
+        ]
     )
     _data = _data.filter(
         pl.any_horizontal([~pl.col(_col).is_null() for _col in _chem_cols if _col not in _missing_cols]) |
@@ -90,61 +124,108 @@ def _get_data(filename):
             pl.col('index') < _offset
         )
 
-    # Unique ID is the `citation number-sample name-rank`
-    _data = _data.with_columns(
-        SPOT=pl.col('SPOT').str.replace(r'\s+$', ''),
-        ID=pl.col('CITATION').str.extract(r'\[(\d+)\]') + '-' + pl.col('SAMPLE NAME'),
-    )
-    _data = _data.with_columns(
-        rank=pl.col('ID').rank('ordinal').over('ID')
-    )
-    _data = _data.with_columns(
-        pl.when(pl.col('ID').is_duplicated())
-        .then(pl.col('ID') + '-' + pl.col('rank').cast(pl.Utf8))
-        .otherwise(pl.col('ID'))
-    )
+    _data = _idealize(_data)
     _data = _data.select(pl.col(['ID'] + _cols))
     return _data
 
 
 
-_filenames = _get_files(path, format)
-data = pl.DataFrame(schema=['ID'] + _cols)
-for file in _filenames:
-    print(f'Processing {file}')
-    data = pl.concat([data, _get_data(path + file)], how='vertical_relaxed')
+def _clean_data(data):
+    # Step 1 - Run replacements
+    for _col, _vals in GEOROC_REPLACEMENTS:
+        for _old, _new in _vals:
+            data = data.with_columns(
+                pl.col(_col).str.replace(r'^' + _old + '$', _new)
+            )
+
+    # Step 2 - Convert to titlecase
+    data = data.with_columns(
+        pl.col(_col).str.to_titlecase() for _col in ['ALTERATION', 'PRIMARY/SECONDARY', 'TECTONIC SETTING', 'MINERAL']
+    )
+
+    return data
 
 
-# Extract enums for the db - this is needed one-time only, regenerate on purpose
-TECTONIC_SETTING_CHOICES = data.filter(
-    pl.col('TECTONIC SETTING').is_not_null()
-).select(
-    pl.col('TECTONIC SETTING').unique().sort()
-)
 
-ROCK_NAME_CHOICES = data.filter(
-    pl.col('ROCK NAME').is_not_null()
-).select(
-    pl.col('ROCK NAME').unique().sort()
-)
+def _check_validity(data):
+    _invalid_ids = data.filter(
+        pl.col('ID').is_null()
+    )
+    if len(_invalid_ids):
+        raise ValueError('Some rows have no IDs assigned: ', len(_invalid_ids))
 
-MINERAL_CHOICES = data.filter(
-    pl.col('MINERAL').is_not_null()
-).select(
-    pl.col('MINERAL').unique().sort()
-)
+    _new_tectonic_choices = data.filter(
+        pl.col('TECTONIC SETTING').is_not_null()
+    ).select(
+        pl.col('TECTONIC SETTING').unique().sort()
+    ).filter(
+        ~pl.col('TECTONIC SETTING').is_in([_ for i, _ in TECTONIC_SETTING_CHOICES])
+    )
+    if len(_new_tectonic_choices):
+        raise ValueError('New tectonic settings detected: ', len(_new_tectonic_choices))
 
-ALTERATION_CHOICES = data.filter(
-    pl.col('ALTERATION').is_not_null()
-).select(
-    pl.col('ALTERATION').unique().sort()
-)
 
-PRIMARY_SECONDARY_CHOICES = data.filter(
-    pl.col('PRIMARY/SECONDARY').is_not_null()
-).select(
-    pl.col('PRIMARY/SECONDARY').unique().sort()
-)
+    _new_alteration_choices = data.filter(
+        pl.col('ALTERATION').is_not_null()
+    ).select(
+        pl.col('ALTERATION').unique().sort()
+    ).filter(
+        ~pl.col('ALTERATION').is_in([_ for i, _ in ALTERATION_CHOICES])
+    )
 
-data.write_csv('data/generated/georoc.csv')
+    if len(_new_alteration_choices):
+        raise ValueError('New alteration types detected: ', len(_new_alteration_choices))
+
+    _new_primary_secondary_choices = data.filter(
+        pl.col('PRIMARY/SECONDARY').is_not_null()
+    ).select(
+        pl.col('PRIMARY/SECONDARY').unique().sort()
+    ).filter(
+        ~pl.col('PRIMARY/SECONDARY').is_in([_ for i, _ in PRIMARY_SECONDARY_CHOICES])
+    )
+
+    if len(_new_primary_secondary_choices):
+        raise ValueError('New primary/secondary types detected: ', len(_new_primary_secondary_choices))
+
+
+
+if __name__ == '__main__':
+    load_dotenv(".envs/.local/.mr")
+
+    _filenames = _get_files(PATH, FORMAT)
+    data = pl.DataFrame(schema=['ID'] + _cols)
+    for file in _filenames:
+        print(f'Processing {file}')
+        try:
+            data = pl.concat([data, _get_data(PATH + file)], how='vertical_relaxed')
+        except Exception as e:
+            print(f'Error processing {file}: {e}')
+            pass
+
+    uri = f'postgresql://{os.getenv("POSTGRES_USER")}:{os.getenv("POSTGRES_PASSWORD")}@{os.getenv("POSTGRES_HOST")}:{os.getenv("POSTGRES_PORT")}/{os.getenv("POSTGRES_DB")}'
+    uri = f'postgresql://mr:mr@localhost:5432/mr'
+    query = 'SELECT * from status_list'
+    pl.read_database_uri(query=query, uri=uri)
+
+
+    data = _clean_data(data)
+    _check_validity(data)
+    data.write_csv('data/generated/georoc.csv')
+
+    # Extract enums for the db - this is needed one-time only, regenerate on purpose
+    # ROCK_NAME_CHOICES = data.filter(
+    #     pl.col('ROCK NAME').is_not_null()
+    # ).select(
+    #     pl.col('ROCK NAME').unique().sort()
+    # )
+    #
+    # MINERAL_CHOICES = data.filter(
+    #     pl.col('MINERAL').is_not_null()
+    # ).select(
+    #     pl.col('MINERAL').unique().sort()
+    # )
+
+
+
+
 

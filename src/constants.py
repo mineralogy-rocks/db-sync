@@ -51,11 +51,11 @@ BASE_COLORS_MAP = [
 ]
 
 ALTERATION_CHOICES = (
-    (1, "Almost totally altered"),
-    (2, "Extensively altered"),
+    (1, "Almost Totally Altered"),
+    (2, "Extensively Altered"),
     (3, "Fresh"),
-    (4, "Moderately altered"),
-    (5, "Slightly altered"),
+    (4, "Moderately Altered"),
+    (5, "Slightly Altered"),
 )
 
 PRIMARY_SECONDARY_CHOICES = (
@@ -64,15 +64,31 @@ PRIMARY_SECONDARY_CHOICES = (
 )
 
 TECTONIC_SETTING_CHOICES = (
-    (1, "Archean Craton (including Greenstone Belts)"),
+    (1, "Archean Craton (Including Greenstone Belts)"),
     (2, "Complex Volcanic Settings"),
     (3, "Continental Flood Basalt"),
     (4, "Convergent Margin"),
     (5, "Intraplate Volcanics"),
     (6, "Ocean Island"),
-    (7, "Ocean-basin Flood Basalt"),
+    (7, "Ocean-Basin Flood Basalt"),
     (8, "Oceanic Plateau"),
     (9, "Rift Volcanics"),
     (10, "Seamount"),
     (11, "Submarine Ridge"),
+)
+
+
+GEOROC_REPLACEMENTS = (
+    (
+        'TECTONIC SETTING', (
+            ('OCEAN ISLANDI', 'OCEAN ISLAND'),
+            ('RIFT VOLCANICS', 'AAAA'),
+        ),
+    ),
+
+    (
+        'ALTERATION', (
+            ('F', 'Fresh'),
+        ),
+    ),
 )
