@@ -82,13 +82,31 @@ GEOROC_REPLACEMENTS = (
     (
         'TECTONIC SETTING', (
             ('OCEAN ISLANDI', 'OCEAN ISLAND'),
-            ('RIFT VOLCANICS', 'AAAA'),
         ),
     ),
 
     (
         'ALTERATION', (
             ('F', 'Fresh'),
+        ),
+    ),
+
+    (
+        'MINERAL', (
+            ('(Al)Kalifeldspar', 'K Feldspar'),
+            ('Clay Mineral', 'Clay Minerals'),
+            ('Ferri-Tschermakite', 'Ferri-tschermakite'),
+            ('Ferri-Tschermakitic Hornblende', 'Ferri-tschermakite'),
+            ('Ferricnyb�Ite', 'Ferric-nybøite'),
+            ('Magnesio-Hastingsite', 'Magnesio-hastingsite'),
+            ('Magnesio-Hornblende', 'Magnesio-hornblende'),
+            ('Magnesioarfvedsonite', 'Magnesio-arfvedsonite'),
+            ('Moncheite-Merenskyite', 'Melonite Group'),
+            ('Selenide', 'Auroselenide'),
+            ('Sulfide', 'Sulfide ore'),
+            ('Titan-Magnesio-Hastingsite', 'Magnesio-hastingsite'),
+            ('Titanite (Sphene)', 'Titanite'),
+            ('Titano-Magnetite', 'Titano-magnetite'),
         ),
     ),
 )

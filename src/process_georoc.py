@@ -1,27 +1,15 @@
 import os
+import sys
+import time
 
 import polars as pl
 from dotenv import load_dotenv
 
-from src.connectors import Migration
 from src.constants import TECTONIC_SETTING_CHOICES, ALTERATION_CHOICES, PRIMARY_SECONDARY_CHOICES, GEOROC_REPLACEMENTS
 
 
 PATH = 'data/georoc/'
 FORMAT = 'csv'
-
-def _get_files(path, format='csv'):
-
-    if not format.startswith('.'):
-        format = '.' + format
-
-    _files = []
-    for file in os.listdir(path):
-        if file.endswith(format):
-            _files.append(file)
-
-    return _files
-
 
 _meta_cols = [
     'CITATION', 'SAMPLE NAME', 'TECTONIC SETTING', 'LOCATION', 'LOCATION COMMENT', 'LATITUDE (MIN.)', 'LATITUDE (MAX.)',
@@ -53,7 +41,25 @@ _chem_cols = [
 _cols = _meta_cols + _chem_cols
 
 
+def _get_files(path, format='csv'):
+
+    if not format.startswith('.'):
+        format = '.' + format
+
+    _files = []
+    for file in os.listdir(path):
+        if file.endswith(format):
+            _files.append(file)
+
+    return _files
+
+
 def _idealize(data):
+    """
+    Idealize the data by assigning IDs to rows and cleaning up the data
+    :param data: polars.DataFrame
+    :return: polars.DataFrame
+    """
     _data = data.with_columns(
         (
             pl.when(pl.col('SAMPLE NAME').is_not_null())
@@ -131,16 +137,23 @@ def _get_data(filename):
 
 
 def _clean_data(data):
+    _titlecase_cols = ['ALTERATION', 'PRIMARY/SECONDARY', 'TECTONIC SETTING']
+    _uppercase_cols = ['MINERAL', 'ROCK NAME']
+
     # Step 1 - Run replacements
     for _col, _vals in GEOROC_REPLACEMENTS:
         for _old, _new in _vals:
+            _old = _old.replace('(', r'\(').replace(')', r'\)')
             data = data.with_columns(
-                pl.col(_col).str.replace(r'^' + _old + '$', _new)
+                pl.col(_col).str.replace(r'(?i)^' + _old + '$', _new)
             )
 
-    # Step 2 - Convert to titlecase
+    # Step 2 - Convert to titlecase and uppercase
     data = data.with_columns(
-        pl.col(_col).str.to_titlecase() for _col in ['ALTERATION', 'PRIMARY/SECONDARY', 'TECTONIC SETTING', 'MINERAL']
+        pl.col(_col).str.to_titlecase() for _col in _titlecase_cols
+    )
+    data = data.with_columns(
+        pl.col(_col).str.to_uppercase() for _col in _uppercase_cols
     )
 
     return data
@@ -202,28 +215,37 @@ if __name__ == '__main__':
             print(f'Error processing {file}: {e}')
             pass
 
-    uri = f'postgresql://{os.getenv("POSTGRES_USER")}:{os.getenv("POSTGRES_PASSWORD")}@{os.getenv("POSTGRES_HOST")}:{os.getenv("POSTGRES_PORT")}/{os.getenv("POSTGRES_DB")}'
-    uri = f'postgresql://mr:mr@localhost:5432/mr'
-    query = 'SELECT * from status_list'
-    pl.read_database_uri(query=query, uri=uri)
-
-
     data = _clean_data(data)
-    _check_validity(data)
-    data.write_csv('data/generated/georoc.csv')
 
-    # Extract enums for the db - this is needed one-time only, regenerate on purpose
-    # ROCK_NAME_CHOICES = data.filter(
-    #     pl.col('ROCK NAME').is_not_null()
-    # ).select(
-    #     pl.col('ROCK NAME').unique().sort()
-    # )
-    #
-    # MINERAL_CHOICES = data.filter(
-    #     pl.col('MINERAL').is_not_null()
-    # ).select(
-    #     pl.col('MINERAL').unique().sort()
-    # )
+    # If data is not valid, we need to investigate and possible add new choices to the db
+    try:
+        _check_validity(data)
+    except ValueError as e:
+        sys.exit(1)
+
+    _filename = f'data/generated/georoc_{time.strftime("%Y%m%d_%H%M%S")}.csv'
+    data.write_csv(_filename)
+
+
+    uri = f'postgresql://{os.getenv("POSTGRES_USER")}:{os.getenv("POSTGRES_PASSWORD")}@{os.getenv("POSTGRES_HOST")}:{os.getenv("POSTGRES_PORT")}/{os.getenv("POSTGRES_DB")}'
+    mineral_log = pl.read_database_uri('SELECT UPPER(name) AS name FROM mineral_log;', uri=uri)
+
+    MINERAL_CHOICES = (data.filter(
+        pl.col('MINERAL').is_not_null(),
+    )
+    .select(
+        pl.col('MINERAL').unique().sort()
+    ))
+    _missing_minerals = MINERAL_CHOICES.join(mineral_log, left_on='MINERAL', right_on='name', how='anti')
+
+    if len(_missing_minerals):
+        print(f'Found {len(_missing_minerals)} missing minerals. Saving to a file in data/generated/ folder.')
+        _missing_minerals.write_csv(f'data/generated/missing_minerals_{time.strftime("%Y%m%d_%H%M%S")}.csv', include_header=True)
+        data = data.filter(
+            ~pl.col('MINERAL').is_in(_missing_minerals.select(pl.col('MINERAL')))
+        )
+
+
 
 
 
