@@ -239,17 +239,23 @@ get_cod = (
 
 get_chem_measurement = (
     """
-
+    SELECT cm.id, cm.external_key as key
+    FROM chem_measurement cm
+    WHERE cm.resource = 1
     """
 )
 
 insert_chem_measurement = (
     """
-    INSERT INTO chem_measurement AS cm (mineral_id, key, resource, sample_name, grain_size, rock_name, rock_texture, alteration, primary_secondary, tectonic_setting)
-    SELECT ml.id, new.key, new.resource, new.sample_name, new.grain_size, new.rock_name, new.rock_texture, new.alteration, new.primary_secondary, new.tectonic_setting
-    FROM (VALUES %s) AS new (name, key, resource, sample_name, grain_size, rock_name, rock_texture, alteration, primary_secondary, tectonic_setting)
-    INNER JOIN mineral_log AS ml ON ml.name = new.name
-    RETURNING cm.id, cm.mineral_id, cm.key, cm.resource, cm.sample_name, cm.grain_size, cm.rock_name, cm.rock_texture, cm.alteration, cm.primary_secondary, cm.tectonic_setting;
+        INSERT INTO chem_measurement AS cm (mineral_id, external_key, resource, sample_name, grain_size, rock_name,
+                                            rock_texture, alteration, is_primary, tectonic_setting, latitude_min, latitude_max, longitude_min, longitude_max, elevation_min, elevation_max,
+                                            citation, location, location_note, created_at)
+        SELECT ml.id, new.key, 1, new.sample_name, new.grain_size, new.rock_name, new.rock_texture, new.alteration::int, new.is_primary::bool, new.tectonic_setting,
+               new.latitude_min::float, new.latitude_max::float, new.longitude_min::float, new.longitude_max::float, new.elevation_min::float, new.elevation_max::float, new.citation, new.location, new.location_note, CURRENT_TIMESTAMP
+        FROM (VALUES %s)
+            AS new (key, name, mineral_note, sample_name, grain_size, rock_name, rock_texture, alteration, is_primary, tectonic_setting, citation, latitude_min, latitude_max, longitude_min, longitude_max, elevation_min, elevation_max, location, location_note)
+        LEFT JOIN mineral_log AS ml ON UPPER(ml.name) = new.name
+        RETURNING cm.id, cm.mineral_id, cm.external_key, cm.resource;
     """
 )
 

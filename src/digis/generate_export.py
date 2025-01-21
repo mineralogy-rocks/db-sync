@@ -3,8 +3,6 @@ import sys
 import time
 
 import polars as pl
-from dotenv import load_dotenv
-
 from src.constants import TECTONIC_SETTING_CHOICES, ALTERATION_CHOICES, PRIMARY_SECONDARY_CHOICES, GEOROC_REPLACEMENTS
 
 
@@ -73,10 +71,8 @@ def _idealize(data):
         rank=pl.col('ID').rank('ordinal').over('ID')
     )
     _data = _data.with_columns(
-        pl.when(pl.col('ID').is_duplicated())
-        .then(pl.col('ID') + '-' + pl.col('rank').cast(pl.Utf8))
-        .otherwise(pl.col('ID'))
-    )
+        pl.col('ID') + '-' + pl.col('rank').cast(pl.Utf8)
+    ).drop('rank')
     return _data
 
 
@@ -130,9 +126,7 @@ def _get_data(filename):
             pl.col('index') < _offset
         )
 
-    _data = _idealize(_data)
-    _data = _data.select(pl.col(['ID'] + _cols))
-    return _data
+    return _data.select(pl.col(_cols))
 
 
 
@@ -166,6 +160,12 @@ def _check_validity(data):
     )
     if len(_invalid_ids):
         raise ValueError('Some rows have no IDs assigned: ', len(_invalid_ids))
+
+    _duplicate_ids = data.filter(
+        pl.col('ID').is_duplicated()
+    )
+    if len(_duplicate_ids):
+        raise ValueError('Duplicate IDs detected: ', len(_duplicate_ids))
 
     _new_tectonic_choices = data.filter(
         pl.col('TECTONIC SETTING').is_not_null()
@@ -201,12 +201,83 @@ def _check_validity(data):
         raise ValueError('New primary/secondary types detected: ', len(_new_primary_secondary_choices))
 
 
+def _convert_colnames(data):
+    _map = {
+        'ID': 'external_key',
+        'MINERAL': 'mineral',
+        'MINERAL_NOTE': 'mineral_note',
+        'SAMPLE NAME': 'sample_name',
+        'GRAIN SIZE': 'grain_size',
+        'ROCK NAME': 'rock_name',
+        'ROCK TEXTURE': 'rock_texture',
+        'ALTERATION': 'alteration',
+        'PRIMARY/SECONDARY': 'is_primary',
+        'TECTONIC SETTING': 'tectonic_setting',
+        'CITATION': 'citation',
+        'LATITUDE (MIN.)': 'latitude_min',
+        'LATITUDE (MAX.)': 'latitude_max',
+        'LONGITUDE (MIN.)': 'longitude_min',
+        'LONGITUDE (MAX.)': 'longitude_max',
+        'ELEVATION (MIN.)': 'elevation_min',
+        'ELEVATION (MAX.)': 'elevation_max',
+        'LOCATION': 'location',
+        'LOCATION COMMENT': 'location_note',
+    }
+    return data.select(pl.all().name.map(lambda x: _map[x] if x in _map else x))
 
-if __name__ == '__main__':
-    load_dotenv(".envs/.local/.mr")
+
+def _replace_enums(df):
+    """
+    Replace string values with their corresponding enum integers using pattern matching.
+    Optimized for large datasets by reducing the number of string operations.
+
+    Args:
+        df (pl.DataFrame): Input DataFrame containing columns to be processed
+
+    Returns:
+        pl.DataFrame: DataFrame with enum values replaced
+    """
+    enum_mappings = {
+        'TECTONIC SETTING': TECTONIC_SETTING_CHOICES,
+        'ALTERATION': ALTERATION_CHOICES,
+        'PRIMARY/SECONDARY': PRIMARY_SECONDARY_CHOICES
+    }
+
+    for column, choices in enum_mappings.items():
+        # Create when-then chain for all enum values
+        conditions = [
+            pl.when(pl.col(column).str.contains(key))
+            .then(pl.lit(index))
+            for index, key in choices
+        ]
+
+        # Replace with None if there's no enum match
+        expr = pl.coalesce(conditions + [pl.lit(None)])
+        df = df.with_columns(expr.alias(column))
+
+    return df
+
+
+def _convert_types(df):
+    types_mapping = {
+        'is_primary': pl.Boolean,
+    }
+    df = df.with_columns(
+        [pl.col(col).cast(types_mapping.get(col, pl.Utf8)) for col in df.columns]
+    )
+    # TODO: replace nans and nulls with python None
+    return df
+
+
+def main():
+    try:
+        from dotenv import load_dotenv
+        load_dotenv(".envs/.local/.mr")
+    except:
+        raise ImportError('Please create a .envs/.local/.mr file with the necessary environment variables.')
 
     _filenames = _get_files(PATH, FORMAT)
-    data = pl.DataFrame(schema=['ID'] + _cols)
+    data = pl.DataFrame(schema=_cols)
     for file in _filenames:
         print(f'Processing {file}')
         try:
@@ -215,6 +286,8 @@ if __name__ == '__main__':
             print(f'Error processing {file}: {e}')
             pass
 
+    data = _idealize(data)
+    data = data.select(pl.col(['ID'] + _cols))
     data = _clean_data(data)
 
     # If data is not valid, we need to investigate and possible add new choices to the db
@@ -222,10 +295,6 @@ if __name__ == '__main__':
         _check_validity(data)
     except ValueError as e:
         sys.exit(1)
-
-    _filename = f'data/generated/georoc_{time.strftime("%Y%m%d_%H%M%S")}.csv'
-    data.write_csv(_filename)
-
 
     uri = f'postgresql://{os.getenv("POSTGRES_USER")}:{os.getenv("POSTGRES_PASSWORD")}@{os.getenv("POSTGRES_HOST")}:{os.getenv("POSTGRES_PORT")}/{os.getenv("POSTGRES_DB")}'
     mineral_log = pl.read_database_uri('SELECT UPPER(name) AS name FROM mineral_log;', uri=uri)
@@ -240,10 +309,32 @@ if __name__ == '__main__':
 
     if len(_missing_minerals):
         print(f'Found {len(_missing_minerals)} missing minerals. Saving to a file in data/generated/ folder.')
-        _missing_minerals.write_csv(f'data/generated/missing_minerals_{time.strftime("%Y%m%d_%H%M%S")}.csv', include_header=True)
-        data = data.filter(
-            ~pl.col('MINERAL').is_in(_missing_minerals.select(pl.col('MINERAL')))
+        _missing_minerals.write_csv(f'data/generated/missing_minerals_{time.strftime("%Y%m%d_%H%M%S")}.csv',
+                                    include_header=True)
+
+        # Move unmatched mineral names to MINERAL_NOTE column
+        data = data.with_columns(
+            pl.when(pl.col('MINERAL').is_in(_missing_minerals.select(pl.col('MINERAL'))))
+            .then(pl.col('MINERAL'))
+            .otherwise(pl.lit(None))
+            .alias('MINERAL_NOTE'),
+            pl.when(pl.col('MINERAL').is_in(_missing_minerals.select(pl.col('MINERAL'))))
+            .then(pl.lit(None))
+            .otherwise(pl.col('MINERAL'))
+            .alias('MINERAL')
         )
+    data = _replace_enums(data)
+    data = _convert_colnames(data)
+    data = _convert_types(data)
+
+    _filename = f'data/generated/georoc_{time.strftime("%Y%m%d_%H%M%S")}.csv'
+    data.write_csv(_filename)
+
+
+if __name__ == '__main__':
+    main()
+
+
 
 
 

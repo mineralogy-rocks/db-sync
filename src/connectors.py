@@ -52,6 +52,7 @@ from src.utils import (
     prepare_minerals_relation_status,
     prepare_mineral_structure,
 )
+from src.base import Migrator
 
 register_adapter(np.int64, AsIs)
 register_adapter(dict, Json)
@@ -60,33 +61,9 @@ load_dotenv(".envs/.local/.mindat")
 load_dotenv(".envs/.prod/.cod")
 
 
-class Migration:
+class Migration(Migrator):
     def __init__(self, env="dev"):
-        if env == "dev":
-            load_dotenv(".envs/.local/.mr")
-        elif env == "prod":
-            load_dotenv(".envs/.prod/.mr")
-        else:
-            sys.exit("Wrong environment!")
-
-        self.mindat_connection_params = (
-            f"mysql+pymysql://"
-            f"{os.getenv('MINDAT_MYSQL_USER')}:{os.getenv('MINDAT_MYSQL_PASSWORD')}@127.0.0.1/"
-            f"{os.getenv('MINDAT_MYSQL_DATABASE')}"
-        )
-        self.cod_connection_params = (
-            f"mysql+pymysql://"
-            f"{os.getenv('COD_MYSQL_USER')}@{os.getenv('COD_MYSQL_HOST')}/"
-            f"{os.getenv('COD_MYSQL_DATABASE')}"
-        )
-        self.mr_connection_params = {
-            "dbname": os.getenv("POSTGRES_DB"),
-            "user": os.getenv("POSTGRES_USER"),
-            "password": os.getenv("POSTGRES_PASSWORD"),
-            "host": os.getenv("POSTGRES_HOST"),
-            "port": os.getenv("POSTGRES_PORT"),
-        }
-        self.pool = None
+        super().__init__(env)
 
         self.mineral_log = None
         self.mineral_context = None
@@ -102,21 +79,6 @@ class Migration:
         self.relations = None
 
         self.cod = None
-
-    def connect_db(self):
-
-        try:
-            self.pool = ThreadedConnectionPool(
-                minconn=1, maxconn=50, **self.mr_connection_params
-            )
-            print("Pool with MR database created.")
-        except psycopgError as e:
-            print("An error occurred when establishing a connection with mr db: %s" % e)
-            sys.exit(1)
-
-    def disconnect_db(self):
-        print("disconnecting from db...")
-        self.pool.closeall()
 
     def fetch_tables(self):
 
@@ -149,24 +111,6 @@ class Migration:
         elapsed = perf_counter() - s
         print(f"Tables generated in {elapsed:0.2f} seconds.")
 
-    def psql_pd_get(self, query, table_name):
-        try:
-            conn = self.pool.getconn()
-            retrieved_ = (
-                pd.read_sql_query(
-                    query,
-                    conn,
-                )
-                .fillna(value=np.nan)
-                .reset_index(drop=True)
-            )
-            setattr(self, table_name, retrieved_)
-
-        except Exception as e:
-            print("An error occurred when creating %s: %s" % (table_name, e))
-
-        finally:
-            self.pool.putconn(conn)
 
     def get_minerals(self):
 
@@ -523,7 +467,6 @@ class Migration:
             except Exception:
                 # TODO: save log?
                 pass
-
 
 
     def sync_mineral_formula(self):
@@ -912,59 +855,6 @@ class Migration:
         except Exception:
             # TODO: save log?
             pass
-
-
-    def sync_digis(self):
-        _georoc = self.cod
-        _alternative_names = self.get_alternative_names()
-        insert = prepare_mineral_structure(_cod, _alternative_names)
-
-        try:
-            retrieved_ = self.execute_query(insert, insert_mineral_structure)
-            self.save_report(
-                retrieved_, table_name="mineral_structure", operation="insert"
-            )
-        except Exception:
-            # TODO: save log?
-            pass
-
-
-    def execute_query(self, df, query):
-
-        df = df.replace({np.nan: None})
-        tuples = [tuple(x) for x in df.to_numpy()]
-
-        _conn = self.pool.getconn()
-        _cursor = _conn.cursor()
-        _cursor.mogrify(query % tuples[:10])
-
-        try:
-            retrieved = execute_values(_cursor, query, tuples, fetch=True)
-        except psycopgError as e:
-            print("An error occurred: %s" % e)
-            _conn.rollback()
-            return 1
-
-        else:
-            _conn.commit()
-            print("The db was updated with %s records" % len(tuples))
-            return retrieved
-
-        finally:
-            _cursor.close()
-            self.pool.putconn(_conn)
-
-    @staticmethod
-    def save_report(data: pd.DataFrame, table_name: str, operation: str) -> None:
-
-        if not isinstance(data, pd.DataFrame):
-            data = pd.DataFrame(data)
-
-        date = datetime.today().strftime("%d.%m.%Y__%H-%M")
-        filename = f"{operation}_{table_name}_{date}.csv"
-
-        data.to_csv(f"db/reports/{filename}", index=False)
-
 
 # migrate = Migration()
 # migrate.connect_db()

@@ -58,9 +58,10 @@ ALTERATION_CHOICES = (
     (5, "Slightly Altered"),
 )
 
+# This is a is_primary bool in database
 PRIMARY_SECONDARY_CHOICES = (
     (1, "Primary"),
-    (2, "Secondary"),
+    (0, "Secondary"),
 )
 
 TECTONIC_SETTING_CHOICES = (
