@@ -53,9 +53,9 @@ BASE_COLORS_MAP = [
 ALTERATION_CHOICES = (
     (1, "Almost Totally Altered"),
     (2, "Extensively Altered"),
-    (3, "Fresh"),
-    (4, "Moderately Altered"),
+    (3, "Moderately Altered"),
     (5, "Slightly Altered"),
+    (5, "Fresh"),
 )
 
 # This is a is_primary bool in database
